@@ -388,14 +388,10 @@ fn get_model<'a>(tape: &'a Tape<f64>, initial_pos: Vec2<f64>) -> Model<'a> {
 
     let loss = hist1
         .iter()
-        .fold(None, |acc: Option<TapeTerm<'a>>, cur| {
-            let diff = target - cur.pos;
-            let loss = diff.x * diff.x + diff.y * diff.y;
-            if let Some(acc) = acc {
-                Some(acc.apply_bin(loss, Box::new(MinOp)))
-            } else {
-                Some(loss)
-            }
+        .last()
+        .map(|lander| {
+            let diff = target - lander.pos;
+            diff.x * diff.x + diff.y * diff.y
         })
         .unwrap();
 
