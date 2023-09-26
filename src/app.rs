@@ -31,9 +31,6 @@ const LANDER_STATE: LanderState = LanderState {
 
 const LANDER_LEG_OFFSET: f64 = 1.2;
 
-const CANVAS_OFFSET_X: f32 = 20.;
-const CANVAS_OFFSET_Y: f32 = 30.;
-
 impl LanderApp {
     pub fn new() -> Self {
         let lander_params = LanderParams::default();
@@ -64,10 +61,13 @@ impl LanderApp {
             );
             let from_screen = to_screen.inverse();
 
+            let canvas_offset_x = response.rect.width() * 0.5;
+            let canvas_offset_y = response.rect.height() * 0.8;
+
             let to_pos2 = |pos: Vec2<f64>| {
                 to_screen.transform_pos(pos2(
-                    (pos.x as f32 + CANVAS_OFFSET_X) * SCALE,
-                    (CANVAS_OFFSET_Y - pos.y as f32) * SCALE,
+                    canvas_offset_x + pos.x as f32 * SCALE,
+                    canvas_offset_y - pos.y as f32 * SCALE,
                 ))
             };
 
@@ -76,8 +76,8 @@ impl LanderApp {
             let from_pos2 = |pos: Pos2| {
                 let model_pos = from_screen.transform_pos(pos);
                 Vec2 {
-                    x: (model_pos.x / SCALE - CANVAS_OFFSET_X) as f64,
-                    y: (CANVAS_OFFSET_Y - model_pos.y / SCALE) as f64,
+                    x: ((model_pos.x - canvas_offset_x) / SCALE) as f64,
+                    y: ((canvas_offset_y - model_pos.y) / SCALE) as f64,
                 }
             };
 
