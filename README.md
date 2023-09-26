@@ -14,6 +14,8 @@ It has native GUI and WebAssembly version that can run on a browser.
 
 ![screenshot](images/screenshot.png)
 
+![screencapture](images/screencapture.gif)
+
 This is the same problem as the Moon Lander game presented in [gym](https://www.gymlibrary.dev/content/basic_usage/) Python library for developing AI, only with a crappier graphics and a pure Rust implementation of autograd and solver.
 
 ![moon-lander animation](https://user-images.githubusercontent.com/15806078/153222406-af5ce6f0-4696-4a24-a683-46ad4939170c.gif)
