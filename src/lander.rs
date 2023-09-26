@@ -380,7 +380,7 @@ fn get_model<'a>(tape: &'a Tape<f64>, initial_pos: Vec2<f64>) -> Model<'a> {
     let mut hist1 = vec![lander1];
     let target = Vec2 {
         x: tape.term("x2", 0.),
-        y: tape.term("x2", 0.),
+        y: tape.term("x2", 1.2),
     };
     for _ in 0..20 {
         lander1.simulate_model(tape, &constants, &mut hist1);

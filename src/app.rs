@@ -1,6 +1,6 @@
 use eframe::{
     egui::{self, Color32, Frame, Pos2, Rect, Ui},
-    epaint::{pos2, vec2},
+    epaint::{pos2, vec2, PathShape},
 };
 use rustograd::{Tape, TapeTerm};
 
@@ -36,7 +36,7 @@ impl<'a> LanderApp<'a> {
         let a = tape.term("a", 1.23);
         let max_iter = 100;
         let lander_state = LANDER_STATE;
-        let lander_model = simulate_lander(Vec2 { x: 2., y: 10. }, max_iter).unwrap();
+        let lander_model = simulate_lander(Vec2 { x: 2., y: 15. }, max_iter).unwrap();
         Self {
             tape,
             a,
@@ -67,7 +67,7 @@ impl<'a> LanderApp<'a> {
             let to_pos2 = |pos: Vec2<f64>| {
                 to_screen.transform_pos(pos2(
                     (pos.x as f32 + 20.) * SCALE,
-                    (20. - pos.y as f32) * SCALE,
+                    (30. - pos.y as f32) * SCALE,
                 ))
             };
 
@@ -105,32 +105,56 @@ impl<'a> LanderApp<'a> {
                     .iter()
                     .map(|x| to_pos2(*x))
                     .collect();
-                let path =
-                    eframe::epaint::PathShape::line(pos, (2., Color32::from_rgb(127, 127, 0)));
+                let path = PathShape::line(pos, (2., Color32::from_rgb(127, 127, 0)));
                 painter.add(path);
 
-                painter.circle(
-                    to_pos2(lander_state.pos),
-                    5.,
-                    Color32::BLUE,
-                    (1., Color32::RED),
-                );
+                let lander_pos = to_pos2(lander_state.pos).to_vec2();
+                let orientation = lander_state.heading;
+                let rotation = [
+                    orientation.cos() as f32,
+                    orientation.sin() as f32,
+                    -orientation.sin() as f32,
+                    orientation.cos() as f32,
+                ];
+                let convert_to_poly = |vertices: &[[f32; 2]]| {
+                    PathShape::convex_polygon(
+                        vertices
+                            .into_iter()
+                            .map(|ofs| {
+                                pos2(
+                                    rotation[0] * ofs[0] + rotation[1] * ofs[1],
+                                    rotation[2] * ofs[0] + rotation[3] * ofs[1],
+                                ) + lander_pos
+                            })
+                            .collect(),
+                        Color32::BLUE,
+                        (1., Color32::RED),
+                    )
+                };
+
+                painter.add(convert_to_poly(&[
+                    [-8., -6.],
+                    [8., -6.],
+                    [10., 6.],
+                    [-10., 6.],
+                ]));
+                painter.add(convert_to_poly(&[
+                    [-15., 0.],
+                    [-12., 0.],
+                    [-14., 12.],
+                    [-17., 12.],
+                ]));
+                painter.add(convert_to_poly(&[
+                    [15., 0.],
+                    [12., 0.],
+                    [14., 12.],
+                    [17., 12.],
+                ]));
 
                 painter.arrow(
                     to_pos2(lander_state.pos),
                     to_vec2(lander_state.velo * 2.),
                     (2., Color32::from_rgb(127, 0, 127)).into(),
-                );
-
-                painter.arrow(
-                    to_pos2(lander_state.pos),
-                    to_vec2(
-                        Vec2 {
-                            x: lander_state.heading.sin(),
-                            y: -lander_state.heading.cos(),
-                        } * 2.,
-                    ),
-                    (2., Color32::BLUE).into(),
                 );
             };
 
