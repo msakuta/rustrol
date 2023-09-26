@@ -23,6 +23,8 @@ jobs:
         #version: # optional, default is latest
     - name: Install GUI dependencies
       run: sudo apt update && sudo apt install -y librust-glib-dev librust-pangocairo-dev librust-atk-dev librust-gdk-sys-dev
+    - name: Add wasm32 target
+      run: rustup target add wasm32-unknown-unknown
     - name: Rust check
       run: cargo c
     - name: Run Rust tests
