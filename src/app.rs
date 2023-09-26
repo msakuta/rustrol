@@ -4,7 +4,9 @@ use eframe::{
 };
 use rustograd::{Tape, TapeTerm};
 
-use crate::lander::{lander_simulate_step, simulate_lander, LanderModel, LanderState, Vec2};
+use crate::lander::{
+    lander_simulate_step, simulate_lander, LanderModel, LanderParams, LanderState, Vec2,
+};
 
 const SCALE: f32 = 10.;
 
@@ -14,7 +16,7 @@ pub struct LanderApp<'a> {
     t: f32,
     playback_speed: f32,
     paused: bool,
-    max_iter: usize,
+    lander_params: LanderParams,
     direct_control: bool,
     lander_state: LanderState,
     lander_model: LanderModel,
@@ -30,20 +32,24 @@ const LANDER_STATE: LanderState = LanderState {
     prediction: vec![],
 };
 
+const CANVAS_OFFSET_X: f32 = 20.;
+const CANVAS_OFFSET_Y: f32 = 30.;
+
 impl<'a> LanderApp<'a> {
     pub fn new() -> Self {
         let tape = Box::leak(Box::new(Tape::new()));
         let a = tape.term("a", 1.23);
         let max_iter = 100;
+        let lander_params = LanderParams::default();
         let lander_state = LANDER_STATE;
-        let lander_model = simulate_lander(Vec2 { x: 2., y: 15. }, max_iter).unwrap();
+        let lander_model = simulate_lander(Vec2 { x: 2., y: 15. }, &lander_params).unwrap();
         Self {
             tape,
             a,
             t: 0.,
             playback_speed: 0.1,
             paused: false,
-            max_iter,
+            lander_params,
             direct_control: false,
             lander_state,
             lander_model,
@@ -66,8 +72,8 @@ impl<'a> LanderApp<'a> {
 
             let to_pos2 = |pos: Vec2<f64>| {
                 to_screen.transform_pos(pos2(
-                    (pos.x as f32 + 20.) * SCALE,
-                    (30. - pos.y as f32) * SCALE,
+                    (pos.x as f32 + CANVAS_OFFSET_X) * SCALE,
+                    (CANVAS_OFFSET_Y - pos.y as f32) * SCALE,
                 ))
             };
 
@@ -76,14 +82,14 @@ impl<'a> LanderApp<'a> {
             let from_pos2 = |pos: Pos2| {
                 let model_pos = from_screen.transform_pos(pos);
                 Vec2 {
-                    x: (model_pos.x / SCALE - 20.) as f64,
-                    y: (20. - model_pos.y / SCALE) as f64,
+                    x: (model_pos.x / SCALE - CANVAS_OFFSET_X) as f64,
+                    y: (CANVAS_OFFSET_Y - model_pos.y / SCALE) as f64,
                 }
             };
 
             if response.clicked() {
                 if let Some(mouse_pos) = response.interact_pointer_pos() {
-                    match simulate_lander(from_pos2(mouse_pos), self.max_iter) {
+                    match simulate_lander(from_pos2(mouse_pos), &self.lander_params) {
                         Ok(res) => self.lander_model = res,
                         Err(e) => self.error_msg = Some(e.to_string()),
                     }
@@ -189,7 +195,20 @@ impl<'a> eframe::App for LanderApp<'a> {
                     (0.1)..=2.,
                 ));
                 ui.label("Max iter:");
-                ui.add(egui::widgets::Slider::new(&mut self.max_iter, 1..=200));
+                ui.add(egui::widgets::Slider::new(
+                    &mut self.lander_params.max_iter,
+                    1..=200,
+                ));
+                ui.label("Optim iter:");
+                ui.add(egui::widgets::Slider::new(
+                    &mut self.lander_params.optim_iter,
+                    1..=200,
+                ));
+                ui.label("Descent rate:");
+                ui.add(egui::widgets::Slider::new(
+                    &mut self.lander_params.rate,
+                    1e-4..=1e-3,
+                ));
             });
 
         egui::CentralPanel::default()

@@ -89,6 +89,22 @@ impl rustograd::BinaryFn<f64> for MinOp {
     }
 }
 
+pub struct LanderParams {
+    pub rate: f64,
+    pub optim_iter: usize,
+    pub max_iter: usize,
+}
+
+impl Default for LanderParams {
+    fn default() -> Self {
+        Self {
+            rate: RATE,
+            optim_iter: 60,
+            max_iter: 100,
+        }
+    }
+}
+
 pub struct LanderState {
     pub pos: Vec2<f64>,
     pub velo: Vec2<f64>,
@@ -103,7 +119,7 @@ pub struct LanderModel {
 
 pub(crate) fn simulate_lander(
     pos: Vec2<f64>,
-    max_iter: usize,
+    params: &LanderParams,
 ) -> Result<LanderModel, GradDoesNotExist> {
     let tape = Tape::new();
     let model = get_model(&tape, pos);
@@ -124,9 +140,9 @@ pub(crate) fn simulate_lander(
     println!("size: {}, b1: {}", tape.len(), model.lander_hist.len());
 
     let mut rng = Xor128::new(12321);
-    let lander_states = (0..max_iter)
+    let lander_states = (0..params.max_iter)
         .map(|t| -> Result<LanderState, GradDoesNotExist> {
-            let (h_thrust, v_thrust) = optimize(&model, t)?;
+            let (h_thrust, v_thrust) = optimize(&model, t, params)?;
             // tape.dump_nodes();
             let (pos, heading) = simulate_step(&model, &mut rng, t, h_thrust, v_thrust);
             let first = model.lander_hist.first().unwrap();
@@ -149,7 +165,7 @@ pub(crate) fn simulate_lander(
 }
 
 const MAX_THRUST: f64 = 0.11;
-const RATE: f64 = 3e-4;
+const RATE: f64 = 1e-4;
 const GM: f64 = 0.06;
 
 #[derive(Debug)]
@@ -188,7 +204,11 @@ macro_rules! try_grad {
     };
 }
 
-fn optimize(model: &Model, t: usize) -> Result<(f64, f64), GradDoesNotExist> {
+fn optimize(
+    model: &Model,
+    t: usize,
+    params: &LanderParams,
+) -> Result<(f64, f64), GradDoesNotExist> {
     model.target.x.eval();
     model.target.y.eval();
 
@@ -197,7 +217,7 @@ fn optimize(model: &Model, t: usize) -> Result<(f64, f64), GradDoesNotExist> {
     let mut v_thrust = 0.;
     let mut h_thrust = 0.;
 
-    for _ in 0..30 {
+    for _ in 0..params.optim_iter {
         model.loss.eval();
         model.loss.backprop().unwrap();
         for (i, hist) in model
@@ -208,10 +228,10 @@ fn optimize(model: &Model, t: usize) -> Result<(f64, f64), GradDoesNotExist> {
         {
             d_h_thrust = try_grad!(hist.h_thrust);
             d_v_thrust = try_grad!(hist.v_thrust);
-            h_thrust = (hist.h_thrust.data().unwrap() - d_h_thrust * RATE)
+            h_thrust = (hist.h_thrust.data().unwrap() - d_h_thrust * params.rate)
                 .min(MAX_THRUST)
                 .max(-MAX_THRUST);
-            v_thrust = (hist.v_thrust.data().unwrap() - d_v_thrust * RATE)
+            v_thrust = (hist.v_thrust.data().unwrap() - d_v_thrust * params.rate)
                 .min(MAX_THRUST)
                 .max(0.0);
             hist.h_thrust.set(h_thrust).unwrap();
