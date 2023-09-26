@@ -230,7 +230,7 @@ macro_rules! try_grad {
 
 fn optimize(
     model: &Model,
-    t: usize,
+    _t: usize,
     params: &LanderParams,
 ) -> Result<(f64, f64), GradDoesNotExist> {
     model.target.x.eval();
@@ -244,12 +244,7 @@ fn optimize(
     for _ in 0..params.optim_iter {
         model.loss.eval();
         model.loss.backprop().unwrap();
-        for (i, hist) in model
-            .lander_hist
-            .iter()
-            .enumerate()
-            .take(model.lander_hist.len() - 2)
-        {
+        for hist in model.lander_hist.iter().take(model.lander_hist.len() - 2) {
             d_h_thrust = try_grad!(hist.h_thrust);
             d_v_thrust = try_grad!(hist.v_thrust);
             h_thrust = (hist.h_thrust.data().unwrap() - d_h_thrust * params.rate)
@@ -423,8 +418,6 @@ fn get_model<'a>(tape: &'a Tape<f64>, initial_pos: Vec2<f64>) -> Model<'a> {
         zero: tape.term("0.0", 0.0),
         half: tape.term("0.5", 0.5),
     };
-
-    let weight = tape.term("weight", 10.);
 
     let mut lander1 = lander;
     let mut hist1 = vec![lander1];

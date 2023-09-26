@@ -2,7 +2,6 @@ use eframe::{
     egui::{self, Color32, Frame, Pos2, Rect, Ui},
     epaint::{pos2, vec2, PathShape},
 };
-use rustograd::{Tape, TapeTerm};
 
 use crate::lander::{
     lander_simulate_step, simulate_lander, LanderModel, LanderParams, LanderState, Vec2,
@@ -10,9 +9,7 @@ use crate::lander::{
 
 const SCALE: f32 = 10.;
 
-pub struct LanderApp<'a> {
-    tape: &'static Tape<f64>,
-    a: TapeTerm<'a, f64>,
+pub struct LanderApp {
     t: f32,
     playback_speed: f32,
     paused: bool,
@@ -37,16 +34,12 @@ const LANDER_LEG_OFFSET: f64 = 1.2;
 const CANVAS_OFFSET_X: f32 = 20.;
 const CANVAS_OFFSET_Y: f32 = 30.;
 
-impl<'a> LanderApp<'a> {
+impl LanderApp {
     pub fn new() -> Self {
-        let tape = Box::leak(Box::new(Tape::new()));
-        let a = tape.term("a", 1.23);
         let lander_params = LanderParams::default();
         let lander_state = LANDER_STATE;
         let lander_model = simulate_lander(Vec2 { x: 2., y: 15. }, &lander_params).unwrap();
         Self {
-            tape,
-            a,
             t: 0.,
             playback_speed: 0.1,
             paused: false,
@@ -191,7 +184,7 @@ impl<'a> LanderApp<'a> {
     }
 }
 
-impl<'a> eframe::App for LanderApp<'a> {
+impl eframe::App for LanderApp {
     fn update(&mut self, ctx: &eframe::egui::Context, _frame: &mut eframe::Frame) {
         ctx.request_repaint();
 
