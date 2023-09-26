@@ -32,6 +32,8 @@ const LANDER_STATE: LanderState = LanderState {
     prediction: vec![],
 };
 
+const LANDER_LEG_OFFSET: f64 = 1.2;
+
 const CANVAS_OFFSET_X: f32 = 20.;
 const CANVAS_OFFSET_Y: f32 = 30.;
 
@@ -39,7 +41,6 @@ impl<'a> LanderApp<'a> {
     pub fn new() -> Self {
         let tape = Box::leak(Box::new(Tape::new()));
         let a = tape.term("a", 1.23);
-        let max_iter = 100;
         let lander_params = LanderParams::default();
         let lander_state = LANDER_STATE;
         let lander_model = simulate_lander(Vec2 { x: 2., y: 15. }, &lander_params).unwrap();
@@ -97,6 +98,20 @@ impl<'a> LanderApp<'a> {
                     println!("New lander_model");
                 }
             }
+
+            painter.line_segment(
+                [
+                    to_pos2(Vec2 {
+                        x: -50.,
+                        y: -LANDER_LEG_OFFSET,
+                    }),
+                    to_pos2(Vec2 {
+                        x: 50.,
+                        y: -LANDER_LEG_OFFSET,
+                    }),
+                ],
+                (1., Color32::BLACK),
+            );
 
             painter.circle(
                 to_pos2(self.lander_model.target),

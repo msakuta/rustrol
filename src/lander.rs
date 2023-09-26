@@ -89,6 +89,30 @@ impl rustograd::BinaryFn<f64> for MinOp {
     }
 }
 
+struct MaxOp;
+
+impl rustograd::BinaryFn<f64> for MaxOp {
+    fn name(&self) -> String {
+        "min".to_string()
+    }
+
+    fn f(&self, lhs: f64, rhs: f64) -> f64 {
+        lhs.max(rhs)
+    }
+
+    fn t(&self, data: f64) -> (f64, f64) {
+        (data, data)
+    }
+
+    fn grad(&self, lhs: f64, rhs: f64) -> (f64, f64) {
+        if lhs < rhs {
+            (0., 1.)
+        } else {
+            (1., 0.)
+        }
+    }
+}
+
 pub struct LanderParams {
     pub rate: f64,
     pub optim_iter: usize,
@@ -100,7 +124,7 @@ impl Default for LanderParams {
         Self {
             rate: RATE,
             optim_iter: 60,
-            max_iter: 100,
+            max_iter: 150,
         }
     }
 }
@@ -259,7 +283,7 @@ fn optimize(
 fn simulate_step(
     model: &Model,
     rng: &mut Xor128,
-    t: usize,
+    _t: usize,
     h_thrust: f64,
     v_thrust: f64,
 ) -> (Vec2<f64>, f64) {
@@ -270,8 +294,6 @@ fn simulate_step(
     };
     let lander = model.lander_hist.first().unwrap();
     let velo = lander.velo.map(|x| x.data().unwrap());
-    let velolen2 = velo.x * velo.x + velo.y * velo.y;
-    let velolen12 = velolen2.sqrt();
     let randomize = Vec2 {
         x: rng.next() - 0.5,
         y: rng.next() - 0.5,
@@ -282,7 +304,7 @@ fn simulate_step(
     let oldpos = lander.pos.map(|x| x.data().unwrap());
     let newpos = oldpos + delta_x2;
     lander.pos.x.set(newpos.x).unwrap();
-    lander.pos.y.set(newpos.y).unwrap();
+    lander.pos.y.set(newpos.y.max(0.)).unwrap();
     let newvelo = lander.velo.map(|x| x.data().unwrap()) + accel;
     lander.velo.x.set(newvelo.x).unwrap();
     lander.velo.y.set(newvelo.y).unwrap();
@@ -315,9 +337,14 @@ pub fn lander_simulate_step(
     let accel = Vec2::<f64> { x: 0., y: -GM } + /*randomize * 0.02 +*/ thrust_vec;
     let delta_x2 = velo + accel * 0.5 * delta_time;
     let oldpos = lander_state.pos;
-    let newpos = oldpos + delta_x2 * delta_time;
+    let mut newpos = oldpos + delta_x2 * delta_time;
+    newpos.y = newpos.y.max(0.);
     lander_state.pos = newpos;
-    let newvelo = lander_state.velo + accel * delta_time;
+    let mut newvelo = lander_state.velo + accel * delta_time;
+    if newpos.y <= 0. && newvelo.y < 0. {
+        newvelo.x = 0.;
+        newvelo.y = 0.;
+    }
     lander_state.velo = newvelo;
     lander_state.heading = next_heading;
 }
@@ -346,7 +373,10 @@ impl<'a> LanderTape<'a> {
         let next_heading = self.heading + self.h_thrust;
         self.accel = gravity(c.zero, c.gm) + thrust_vec;
         let delta_x2 = self.velo + self.accel * c.half;
-        self.pos = self.pos + delta_x2;
+        self.pos = Vec2 {
+            x: self.pos.x + delta_x2.x,
+            y: (self.pos.y + delta_x2.y).apply_bin(c.zero, Box::new(MaxOp)),
+        };
         self.velo = self.velo + self.accel;
         self.heading = next_heading;
         self.h_thrust = tape.term(format!("h_thrust{}", hist.len()), 0.);
@@ -400,7 +430,7 @@ fn get_model<'a>(tape: &'a Tape<f64>, initial_pos: Vec2<f64>) -> Model<'a> {
     let mut hist1 = vec![lander1];
     let target = Vec2 {
         x: tape.term("x2", 0.),
-        y: tape.term("x2", 1.2),
+        y: tape.term("x2", 0.),
     };
     for _ in 0..20 {
         lander1.simulate_model(tape, &constants, &mut hist1);
