@@ -41,7 +41,7 @@ impl LanderApp {
         let lander_model = simulate_lander(Vec2 { x: 2., y: 15. }, &lander_params).unwrap();
         Self {
             t: 0.,
-            playback_speed: 0.1,
+            playback_speed: 0.5,
             paused: false,
             lander_params,
             direct_control: false,
@@ -105,6 +105,39 @@ impl LanderApp {
                 ],
                 (1., Color32::BLACK),
             );
+
+            const GOAL_POST_HEIGHT: f64 = 2.;
+
+            // Goal posts
+            for x in [-3., 3.] {
+                painter.line_segment(
+                    [
+                        to_pos2(Vec2 {
+                            x,
+                            y: -LANDER_LEG_OFFSET,
+                        }),
+                        to_pos2(Vec2 {
+                            x,
+                            y: GOAL_POST_HEIGHT,
+                        }),
+                    ],
+                    (3., Color32::from_rgb(0, 127, 63)),
+                );
+
+                painter.add(PathShape::convex_polygon(
+                    [[0., 0.], [1., -0.5], [0., -1.]]
+                        .into_iter()
+                        .map(|ofs| {
+                            to_pos2(Vec2 {
+                                x: x + ofs[0],
+                                y: GOAL_POST_HEIGHT + ofs[1],
+                            })
+                        })
+                        .collect(),
+                    Color32::from_rgb(63, 95, 0),
+                    (1., Color32::from_rgb(31, 63, 0)),
+                ));
+            }
 
             painter.circle(
                 to_pos2(self.lander_model.target),

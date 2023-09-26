@@ -15,6 +15,12 @@ impl<T: Copy> Vec2<T> {
     }
 }
 
+impl<T> From<[T; 2]> for Vec2<T> {
+    fn from([x, y]: [T; 2]) -> Self {
+        Vec2 { x, y }
+    }
+}
+
 impl<T: std::ops::Add<Output = T>> std::ops::Add for Vec2<T> {
     type Output = Self;
     fn add(self, rhs: Self) -> Self::Output {
