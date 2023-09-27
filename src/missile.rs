@@ -2,7 +2,7 @@ use rustograd::{Tape, TapeTerm};
 use std::fs::File;
 use std::io::{BufWriter, Write};
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct Vec2<T> {
     pub x: T,
     pub y: T,
@@ -100,9 +100,9 @@ pub struct MissileState {
     pub target_prediction: Vec<Vec2<f64>>,
 }
 
-pub fn simulate_missile() -> Vec<MissileState> {
+pub fn simulate_missile(pos: Vec2<f64>) -> Result<Vec<MissileState>, String> {
     let tape = Tape::new();
-    let model = get_model(&tape);
+    let model = get_model(&tape, pos);
 
     // if let Ok(f) = std::fs::File::create("graph.dot") {
     //     let x2 = model.hist1.first().unwrap().pos;
@@ -131,7 +131,7 @@ pub fn simulate_missile() -> Vec<MissileState> {
         .unwrap();
 
     let mut rng = Xor128::new(12321);
-    (0..30)
+    Ok((0..30)
         .map(|t| {
             let (thrust, heading) = optimize(&model, t, &mut f, &mut loss_f);
             let (pos, target) = simulate_step(&model, &mut rng, t, heading, thrust);
@@ -152,7 +152,7 @@ pub fn simulate_missile() -> Vec<MissileState> {
                     .collect(),
             }
         })
-        .collect()
+        .collect())
 }
 
 const MAX_THRUST: f64 = 0.11;
@@ -309,13 +309,13 @@ struct Model<'a> {
     loss: TapeTerm<'a>,
 }
 
-fn get_model<'a>(tape: &'a Tape<f64>) -> Model<'a> {
+fn get_model<'a>(tape: &'a Tape<f64>, pos: Vec2<f64>) -> Model<'a> {
     let heading = tape.term("heading", std::f64::consts::PI / 4.);
     let thrust = tape.term("thrust", 0.01);
     let missile = Missile {
         pos: Vec2 {
-            x: tape.term("x1", 0.),
-            y: tape.term("y1", 0.),
+            x: tape.term("x1", pos.x),
+            y: tape.term("y1", pos.y),
         },
         velo: Vec2 {
             x: tape.term("vx1", 0.05),

@@ -13,16 +13,22 @@ pub struct MissileApp {
     t: f64,
     playback_speed: f64,
     missile_model: Vec<MissileState>,
+    error_msg: Option<String>,
 }
 
 impl MissileApp {
     pub fn new() -> Self {
+        let (missile_model, error_msg) = match simulate_missile(Vec2 { x: 0., y: 0. }) {
+            Ok(res) => (res, None),
+            Err(e) => (vec![], Some(e)),
+        };
         Self {
             direct_control: false,
             paused: false,
             t: 0.,
             playback_speed: 0.5,
-            missile_model: simulate_missile(),
+            missile_model,
+            error_msg,
         }
     }
 
@@ -56,6 +62,17 @@ impl MissileApp {
                     y: ((canvas_offset_y - model_pos.y) / SCALE) as f64,
                 }
             };
+
+            if response.clicked() {
+                if let Some(mouse_pos) = response.interact_pointer_pos() {
+                    match simulate_missile(from_pos2(mouse_pos)) {
+                        Ok(res) => self.missile_model = res,
+                        Err(e) => self.error_msg = Some(e.to_string()),
+                    }
+                    self.t = 0.;
+                    println!("New lander_model");
+                }
+            }
 
             if let Some(missile_state) = self.missile_model.get(self.t as usize) {
                 let render_path = |prediction: &[Vec2<f64>], color: Color32| {
@@ -94,6 +111,16 @@ impl MissileApp {
 
     pub fn update_panel(&mut self, ui: &mut Ui) {
         ui.checkbox(&mut self.direct_control, "direct_control");
+        if ui.button("Reset").clicked() {
+            // self.missile_state = LANDER_STATE;
+            self.t = 0.;
+        }
+        ui.checkbox(&mut self.paused, "Paused");
+        ui.label("Playback speed (times 60fps):");
+        ui.add(egui::widgets::Slider::new(
+            &mut self.playback_speed,
+            (0.1)..=2.,
+        ));
     }
 
     pub fn update(&mut self, _ctx: &Context) {
