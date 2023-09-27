@@ -1,7 +1,8 @@
 mod app;
 mod lander;
+mod missile;
 
-use crate::app::LanderApp;
+use crate::app::RustrolApp;
 
 #[cfg(not(target_arch = "wasm32"))]
 fn main() {
@@ -14,7 +15,7 @@ fn main() {
     eframe::run_native(
         "Lander",
         native_options,
-        Box::new(|_cc| Box::new(LanderApp::new())),
+        Box::new(|_cc| Box::new(RustrolApp::new())),
     )
     .unwrap();
 }
