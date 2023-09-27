@@ -2,31 +2,7 @@ use rustograd::{Tape, TapeTerm};
 use std::fs::File;
 use std::io::{BufWriter, Write};
 
-use crate::{vec2::Vec2, xor128::Xor128};
-
-struct MinOp;
-
-impl rustograd::BinaryFn<f64> for MinOp {
-    fn name(&self) -> String {
-        "min".to_string()
-    }
-
-    fn f(&self, lhs: f64, rhs: f64) -> f64 {
-        lhs.min(rhs)
-    }
-
-    fn t(&self, data: f64) -> (f64, f64) {
-        (data, data)
-    }
-
-    fn grad(&self, lhs: f64, rhs: f64) -> (f64, f64) {
-        if lhs < rhs {
-            (1., 0.)
-        } else {
-            (0., 1.)
-        }
-    }
-}
+use crate::{ops::MinOp, vec2::Vec2, xor128::Xor128};
 
 pub struct MissileState {
     pub pos: Vec2<f64>,
