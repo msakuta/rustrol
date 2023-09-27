@@ -96,6 +96,8 @@ pub struct MissileState {
     pub target: Vec2<f64>,
     pub thrust: f64,
     pub heading: f64,
+    pub prediction: Vec<Vec2<f64>>,
+    pub target_prediction: Vec<Vec2<f64>>,
 }
 
 pub fn simulate_missile() -> Vec<MissileState> {
@@ -128,21 +130,26 @@ pub fn simulate_missile() -> Vec<MissileState> {
         .map(BufWriter::new)
         .unwrap();
 
-    let mut traj_f = File::create("missile_traj.csv")
-        .map(BufWriter::new)
-        .unwrap();
-    writeln!(traj_f, "t, missile_x, missile_y, target_x, target_y").unwrap();
     let mut rng = Xor128::new(12321);
     (0..30)
         .map(|t| {
             let (thrust, heading) = optimize(&model, t, &mut f, &mut loss_f);
-            // tape.dump_nodes();
             let (pos, target) = simulate_step(&model, &mut rng, t, heading, thrust);
             MissileState {
                 pos,
                 target,
                 thrust,
                 heading,
+                prediction: model
+                    .missile_hist
+                    .iter()
+                    .map(|b1| b1.pos.map(|x| x.eval()))
+                    .collect(),
+                target_prediction: model
+                    .target_hist
+                    .iter()
+                    .map(|b1| b1.map(|x| x.eval()))
+                    .collect(),
             }
         })
         .collect()

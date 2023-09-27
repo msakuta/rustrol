@@ -1,6 +1,6 @@
 use eframe::{
     egui::{self, Context, Frame, Ui},
-    epaint::{pos2, vec2, Color32, Pos2, Rect},
+    epaint::{pos2, vec2, Color32, PathShape, Pos2, Rect},
 };
 
 use crate::missile::{simulate_missile, MissileState, Vec2};
@@ -58,6 +58,17 @@ impl MissileApp {
             };
 
             if let Some(missile_state) = self.missile_model.get(self.t as usize) {
+                let render_path = |prediction: &[Vec2<f64>], color: Color32| {
+                    let pos = prediction.iter().map(|x| to_pos2(*x)).collect();
+                    let path = PathShape::line(pos, (2., color));
+                    painter.add(path);
+                };
+                render_path(&missile_state.prediction, Color32::from_rgb(127, 127, 0));
+                render_path(
+                    &missile_state.target_prediction,
+                    Color32::from_rgb(0, 127, 0),
+                );
+
                 painter.circle(
                     to_pos2(missile_state.pos),
                     5.,
