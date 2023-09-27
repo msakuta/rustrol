@@ -86,7 +86,6 @@ impl LanderApp {
                         Err(e) => self.error_msg = Some(e.to_string()),
                     }
                     self.t = 0.;
-                    println!("New lander_model");
                 }
             }
 

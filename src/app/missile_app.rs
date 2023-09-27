@@ -77,7 +77,6 @@ impl MissileApp {
                         Err(e) => self.error_msg = Some(e.to_string()),
                     }
                     self.t = 0.;
-                    println!("New lander_model");
                 }
             }
 
@@ -93,12 +92,42 @@ impl MissileApp {
                     Color32::from_rgb(0, 127, 0),
                 );
 
-                painter.circle(
-                    to_pos2(missile_state.pos),
-                    5.,
-                    Color32::RED,
-                    (1., Color32::BROWN),
-                );
+                let missile_pos = to_pos2(missile_state.pos).to_vec2();
+                let orientation = missile_state.heading;
+                let rotation = [
+                    orientation.cos() as f32,
+                    -orientation.sin() as f32,
+                    orientation.sin() as f32,
+                    orientation.cos() as f32,
+                ];
+                let convert_to_poly = |vertices: &[[f32; 2]]| {
+                    PathShape::convex_polygon(
+                        vertices
+                            .into_iter()
+                            .map(|ofs| {
+                                pos2(
+                                    rotation[0] * ofs[0] + rotation[1] * ofs[1],
+                                    rotation[2] * ofs[0] + rotation[3] * ofs[1],
+                                ) + missile_pos
+                            })
+                            .collect(),
+                        Color32::BLUE,
+                        (1., Color32::RED),
+                    )
+                };
+
+                painter.add(convert_to_poly(&[
+                    [-1., -12.],
+                    [1., -12.],
+                    [3., -3.],
+                    [3., 12.],
+                    [-3., 12.],
+                    [-3., -3.],
+                ]));
+
+                painter.add(convert_to_poly(&[[-5., 3.], [-5., 12.], [-10., 12.]]));
+
+                painter.add(convert_to_poly(&[[5., 3.], [5., 12.], [10., 12.]]));
 
                 painter.circle(
                     to_pos2(missile_state.target),

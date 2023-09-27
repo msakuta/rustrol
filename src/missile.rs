@@ -76,9 +76,9 @@ pub fn simulate_missile(
         .collect())
 }
 
-const MAX_THRUST: f64 = 0.11;
+const MAX_THRUST: f64 = 0.09;
 const RATE: f64 = 3e-4;
-const GM: f64 = 0.06;
+const GM: f64 = 0.03;
 const DRAG: f64 = 0.05;
 const TARGET_X: f64 = 20.;
 const TARGET_VX: f64 = 0.5;
