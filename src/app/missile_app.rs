@@ -1,6 +1,7 @@
 use eframe::{
     egui::{self, Context, Frame, Ui},
-    epaint::{pos2, vec2, Color32, PathShape, Pos2, Rect},
+    emath::Align2,
+    epaint::{pos2, vec2, Color32, FontId, PathShape, Pos2, Rect},
 };
 
 use crate::{
@@ -26,7 +27,7 @@ impl MissileApp {
         let (missile_model, error_msg) =
             match simulate_missile(Vec2 { x: 0., y: 0. }, &missile_params) {
                 Ok(res) => (res, None),
-                Err(e) => (vec![], Some(e)),
+                Err(e) => (vec![], Some(e.to_string())),
             };
         Self {
             direct_control: false,
@@ -69,6 +70,16 @@ impl MissileApp {
                     y: ((canvas_offset_y - model_pos.y) / SCALE) as f64,
                 }
             };
+
+            if let Some(ref err) = self.error_msg {
+                painter.text(
+                    response.rect.center(),
+                    Align2::CENTER_CENTER,
+                    err,
+                    FontId::default(),
+                    Color32::RED,
+                );
+            }
 
             if response.clicked() {
                 if let Some(mouse_pos) = response.interact_pointer_pos() {

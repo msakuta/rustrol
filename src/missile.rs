@@ -1,6 +1,6 @@
 use rustograd::{Tape, TapeTerm};
 
-use crate::{ops::MinOp, vec2::Vec2, xor128::Xor128};
+use crate::{error::GradDoesNotExist, ops::MinOp, vec2::Vec2, xor128::Xor128};
 
 pub struct MissileParams {
     pub rate: f64,
@@ -21,7 +21,6 @@ impl Default for MissileParams {
 pub struct MissileState {
     pub pos: Vec2<f64>,
     pub target: Vec2<f64>,
-    pub thrust: f64,
     pub heading: f64,
     pub prediction: Vec<Vec2<f64>>,
     pub target_prediction: Vec<Vec2<f64>>,
@@ -30,7 +29,7 @@ pub struct MissileState {
 pub fn simulate_missile(
     pos: Vec2<f64>,
     params: &MissileParams,
-) -> Result<Vec<MissileState>, String> {
+) -> Result<Vec<MissileState>, GradDoesNotExist> {
     let tape = Tape::new();
     let model = get_model(&tape, pos);
 
@@ -52,14 +51,14 @@ pub fn simulate_missile(
     );
 
     let mut rng = Xor128::new(12321);
-    Ok((0..params.max_iter)
+    (0..params.max_iter)
         .map(|t| {
-            let (thrust, heading) = optimize(&model, t, params);
-            let (pos, target) = simulate_step(&model, &mut rng, t, heading, thrust);
-            MissileState {
+            let (h_thrust, v_thrust) = optimize(&model, t, params)?;
+            let heading = model.missile_hist.first().unwrap().heading.data().unwrap();
+            let (pos, target) = simulate_step(&model, &mut rng, t, h_thrust, v_thrust);
+            Ok(MissileState {
                 pos,
                 target,
-                thrust,
                 heading,
                 prediction: model
                     .missile_hist
@@ -71,9 +70,9 @@ pub fn simulate_missile(
                     .iter()
                     .map(|b1| b1.map(|x| x.eval()))
                     .collect(),
-            }
+            })
         })
-        .collect())
+        .collect()
 }
 
 const MAX_THRUST: f64 = 0.09;
@@ -83,7 +82,11 @@ const DRAG: f64 = 0.05;
 const TARGET_X: f64 = 20.;
 const TARGET_VX: f64 = 0.5;
 
-fn optimize(model: &Model, t: usize, params: &MissileParams) -> (f64, f64) {
+fn optimize(
+    model: &Model,
+    t: usize,
+    params: &MissileParams,
+) -> Result<(f64, f64), GradDoesNotExist> {
     for (t2, target) in model.target_hist.iter().enumerate() {
         target
             .x
@@ -94,45 +97,59 @@ fn optimize(model: &Model, t: usize, params: &MissileParams) -> (f64, f64) {
         target.y.eval();
     }
 
-    let mut d_thrust = 0.;
-    let mut d_heading = 0.;
-    let mut thrust = 0.;
-    let mut heading = 0.;
-
     for _ in 0..params.optim_iter {
         model.loss.eval();
         model.loss.backprop().unwrap();
-        d_thrust = model.thrust.grad().unwrap();
-        d_heading = model.heading.grad().unwrap();
-        thrust = (model.thrust.data().unwrap() - d_thrust * RATE)
-            .min(MAX_THRUST)
-            .max(0.);
-        model.thrust.set(thrust).unwrap();
-        heading = model.heading.data().unwrap() - d_heading * RATE;
-        model.heading.set(heading).unwrap();
+        for state in model.missile_hist.iter().take(model.missile_hist.len() - 2) {
+            let d_h_thrust = try_grad!(state.h_thrust);
+            let d_v_thrust = try_grad!(state.v_thrust);
+            state
+                .v_thrust
+                .set(
+                    (state.v_thrust.data().unwrap() - d_v_thrust * RATE)
+                        .min(MAX_THRUST)
+                        .max(0.),
+                )
+                .unwrap();
+            state
+                .h_thrust
+                .set(
+                    (state.h_thrust.data().unwrap() - d_h_thrust * RATE)
+                        .min(MAX_THRUST)
+                        .max(-MAX_THRUST),
+                )
+                .unwrap();
+        }
     }
 
     let loss_val = model.loss.eval_noclear();
+    let first = model.missile_hist.first().unwrap();
     println!(
-        "thrust: {}, heading: {}, loss: {}",
-        d_thrust, d_heading, loss_val
+        "h_thrust: {}, v_thrust: {}, loss: {}",
+        first.h_thrust.eval_noclear(),
+        first.v_thrust.eval_noclear(),
+        loss_val
     );
 
-    (thrust, heading)
+    let h_thrust = model.missile_hist.first().unwrap().h_thrust.data().unwrap();
+    let v_thrust = model.missile_hist.first().unwrap().v_thrust.data().unwrap();
+
+    Ok((h_thrust, v_thrust))
 }
 
 fn simulate_step(
     model: &Model,
     rng: &mut Xor128,
     t: usize,
-    heading: f64,
-    thrust: f64,
+    h_thrust: f64,
+    v_thrust: f64,
 ) -> (Vec2<f64>, Vec2<f64>) {
-    let thrust_vec = Vec2::<f64> {
-        x: heading.sin() * thrust,
-        y: heading.cos() * thrust,
-    };
     let missile = model.missile_hist.first().unwrap();
+    let heading = missile.heading.data().unwrap();
+    let thrust_vec = Vec2::<f64> {
+        x: heading.sin() * v_thrust,
+        y: heading.cos() * v_thrust,
+    };
     let velo = missile.velo.map(|x| x.data().unwrap());
     let velolen2 = velo.x * velo.x + velo.y * velo.y;
     let velolen12 = velolen2.sqrt();
@@ -140,6 +157,7 @@ fn simulate_step(
         x: rng.next() - 0.5,
         y: rng.next() - 0.5,
     };
+    let next_heading = heading + h_thrust;
     let accel =
         Vec2::<f64> { x: 0., y: -GM } + randomize * 0.02 - velo * DRAG / velolen12 + thrust_vec;
     let delta_x2 = velo + accel * 0.5;
@@ -150,6 +168,7 @@ fn simulate_step(
     let newvelo = missile.velo.map(|x| x.data().unwrap()) + accel;
     missile.velo.x.set(newvelo.x).unwrap();
     missile.velo.y.set(newvelo.y).unwrap();
+    missile.heading.set(next_heading).unwrap();
     for (t2, target) in model.target_hist.iter().enumerate() {
         target
             .x
@@ -161,30 +180,36 @@ fn simulate_step(
 }
 
 #[derive(Clone, Copy)]
-struct Missile<'a> {
+struct MissileTape<'a> {
+    h_thrust: TapeTerm<'a>,
+    v_thrust: TapeTerm<'a>,
     pos: Vec2<TapeTerm<'a>>,
     velo: Vec2<TapeTerm<'a>>,
+    heading: TapeTerm<'a>,
     accel: Vec2<TapeTerm<'a>>,
 }
 
-impl<'a> Missile<'a> {
+impl<'a> MissileTape<'a> {
     fn simulate_model(
         &mut self,
-        heading: TapeTerm<'a>,
-        thrust: TapeTerm<'a>,
+        tape: &'a Tape,
         c: &Constants<'a>,
-        hist: &mut Vec<Missile<'a>>,
+        hist: &mut Vec<MissileTape<'a>>,
     ) {
         let thrust_vec = Vec2 {
-            x: heading.apply("sin", |x| x.sin(), |x| x.cos()) * thrust,
-            y: heading.apply("cos", |x| x.cos(), |x| -x.sin()) * thrust,
+            x: self.heading.apply("sin", |x| x.sin(), |x| x.cos()) * self.v_thrust,
+            y: self.heading.apply("cos", |x| x.cos(), |x| -x.sin()) * self.v_thrust,
         };
+        let next_heading = self.heading + self.h_thrust;
         let velolen2 = self.velo.x * self.velo.x + self.velo.y * self.velo.y;
         let velolen12 = velolen2.apply("sqrt", |x| x.sqrt(), |x| 1. / 2. * x.powf(-1. / 2.));
         self.accel = gravity(c.zero, c.gm) - self.velo * c.drag / velolen12 + thrust_vec;
         let delta_x2 = self.velo + self.accel * c.half;
         self.pos = self.pos + delta_x2;
         self.velo = self.velo + self.accel;
+        self.heading = next_heading;
+        self.h_thrust = tape.term(format!("h_thrust{}", hist.len()), 0.);
+        self.v_thrust = tape.term(format!("v_thrust{}", hist.len()), 0.);
         hist.push(*self);
     }
 }
@@ -199,17 +224,15 @@ struct Constants<'a> {
 
 /// A model for the simulation state
 struct Model<'a> {
-    missile_hist: Vec<Missile<'a>>,
+    missile_hist: Vec<MissileTape<'a>>,
     target_hist: Vec<Vec2<TapeTerm<'a>>>,
-    heading: TapeTerm<'a>,
-    thrust: TapeTerm<'a>,
     loss: TapeTerm<'a>,
 }
 
 fn get_model<'a>(tape: &'a Tape<f64>, pos: Vec2<f64>) -> Model<'a> {
-    let heading = tape.term("heading", std::f64::consts::PI / 4.);
-    let thrust = tape.term("thrust", 0.01);
-    let missile = Missile {
+    let missile = MissileTape {
+        h_thrust: tape.term("h_thrust", 0.0),
+        v_thrust: tape.term("v_thrust", 0.01),
         pos: Vec2 {
             x: tape.term("x1", pos.x),
             y: tape.term("y1", pos.y),
@@ -218,6 +241,7 @@ fn get_model<'a>(tape: &'a Tape<f64>, pos: Vec2<f64>) -> Model<'a> {
             x: tape.term("vx1", 0.05),
             y: tape.term("vy1", 0.05),
         },
+        heading: tape.term("heading", std::f64::consts::PI / 4.),
         accel: Vec2 {
             x: tape.term("ax1", 0.),
             y: tape.term("ay1", 0.),
@@ -232,24 +256,24 @@ fn get_model<'a>(tape: &'a Tape<f64>, pos: Vec2<f64>) -> Model<'a> {
     };
 
     let mut missile1 = missile;
-    let mut hist1 = vec![missile1];
-    let mut hist2 = vec![];
+    let mut missile_hist = vec![missile1];
+    let mut target_hist = vec![];
 
-    hist2.push(Vec2 {
+    target_hist.push(Vec2 {
         x: tape.term("x2", 11.),
         y: tape.term("x2", 5.),
     });
     for t in 0..20 {
-        missile1.simulate_model(heading, thrust, &constants, &mut hist1);
-        hist2.push(Vec2 {
+        missile1.simulate_model(tape, &constants, &mut missile_hist);
+        target_hist.push(Vec2 {
             x: tape.term("x2", TARGET_X - TARGET_VX * (t as f64)),
             y: tape.term("x2", 5.),
         });
     }
 
-    let loss = hist1
+    let loss = missile_hist
         .iter()
-        .zip(hist2.iter())
+        .zip(target_hist.iter())
         .fold(None, |acc: Option<TapeTerm<'a>>, cur| {
             let diff = *cur.1 - cur.0.pos;
             let loss = diff.x * diff.x + diff.y * diff.y;
@@ -262,10 +286,8 @@ fn get_model<'a>(tape: &'a Tape<f64>, pos: Vec2<f64>) -> Model<'a> {
         .unwrap();
 
     Model {
-        missile_hist: hist1,
-        target_hist: hist2,
-        thrust,
-        heading,
+        missile_hist,
+        target_hist,
         loss,
     }
 }

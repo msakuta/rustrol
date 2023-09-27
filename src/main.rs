@@ -1,4 +1,6 @@
 mod app;
+#[macro_use]
+mod error;
 mod lander;
 mod missile;
 mod ops;

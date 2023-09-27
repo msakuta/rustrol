@@ -1,4 +1,4 @@
-use crate::{ops::MaxOp, vec2::Vec2, xor128::Xor128};
+use crate::{error::GradDoesNotExist, ops::MaxOp, vec2::Vec2, xor128::Xor128};
 use rustograd::{Tape, TapeTerm};
 
 pub struct LanderParams {
@@ -79,42 +79,6 @@ pub(crate) fn simulate_lander(
 const MAX_THRUST: f64 = 0.11;
 const RATE: f64 = 1e-4;
 const GM: f64 = 0.06;
-
-#[derive(Debug)]
-pub struct GradDoesNotExist {
-    name: String,
-    file: String,
-    line: u32,
-}
-
-impl GradDoesNotExist {
-    fn new(name: impl Into<String>, file: impl Into<String>, line: u32) -> Self {
-        Self {
-            name: name.into(),
-            file: file.into(),
-            line,
-        }
-    }
-}
-
-impl std::fmt::Display for GradDoesNotExist {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Gradient does not exist in variable {} at {}:{}",
-            self.name, self.file, self.line
-        )
-    }
-}
-
-/// A macro that attempts to get a gradient of a term, or raise GradDoesNotExist error
-macro_rules! try_grad {
-    ($term:expr) => {
-        $term
-            .grad()
-            .ok_or_else(|| GradDoesNotExist::new($term.name(), file!(), line!()))?
-    };
-}
 
 fn optimize(
     model: &Model,
