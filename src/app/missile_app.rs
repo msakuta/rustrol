@@ -4,7 +4,7 @@ use eframe::{
 };
 
 use crate::{
-    missile::{simulate_missile, MissileState},
+    missile::{simulate_missile, MissileParams, MissileState},
     vec2::Vec2,
 };
 
@@ -13,6 +13,7 @@ use super::SCALE;
 pub struct MissileApp {
     direct_control: bool,
     paused: bool,
+    missile_params: MissileParams,
     t: f64,
     playback_speed: f64,
     missile_model: Vec<MissileState>,
@@ -21,13 +22,16 @@ pub struct MissileApp {
 
 impl MissileApp {
     pub fn new() -> Self {
-        let (missile_model, error_msg) = match simulate_missile(Vec2 { x: 0., y: 0. }) {
-            Ok(res) => (res, None),
-            Err(e) => (vec![], Some(e)),
-        };
+        let missile_params = MissileParams::default();
+        let (missile_model, error_msg) =
+            match simulate_missile(Vec2 { x: 0., y: 0. }, &missile_params) {
+                Ok(res) => (res, None),
+                Err(e) => (vec![], Some(e)),
+            };
         Self {
             direct_control: false,
             paused: false,
+            missile_params,
             t: 0.,
             playback_speed: 0.5,
             missile_model,
@@ -68,7 +72,7 @@ impl MissileApp {
 
             if response.clicked() {
                 if let Some(mouse_pos) = response.interact_pointer_pos() {
-                    match simulate_missile(from_pos2(mouse_pos)) {
+                    match simulate_missile(from_pos2(mouse_pos), &self.missile_params) {
                         Ok(res) => self.missile_model = res,
                         Err(e) => self.error_msg = Some(e.to_string()),
                     }
@@ -123,6 +127,21 @@ impl MissileApp {
         ui.add(egui::widgets::Slider::new(
             &mut self.playback_speed,
             (0.1)..=2.,
+        ));
+        ui.label("Max iter:");
+        ui.add(egui::widgets::Slider::new(
+            &mut self.missile_params.max_iter,
+            1..=200,
+        ));
+        ui.label("Optim iter:");
+        ui.add(egui::widgets::Slider::new(
+            &mut self.missile_params.optim_iter,
+            1..=200,
+        ));
+        ui.label("Descent rate:");
+        ui.add(egui::widgets::Slider::new(
+            &mut self.missile_params.rate,
+            1e-4..=1e-3,
         ));
     }
 

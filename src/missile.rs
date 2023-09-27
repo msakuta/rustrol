@@ -1,8 +1,22 @@
 use rustograd::{Tape, TapeTerm};
-use std::fs::File;
-use std::io::{BufWriter, Write};
 
 use crate::{ops::MinOp, vec2::Vec2, xor128::Xor128};
+
+pub struct MissileParams {
+    pub rate: f64,
+    pub optim_iter: usize,
+    pub max_iter: usize,
+}
+
+impl Default for MissileParams {
+    fn default() -> Self {
+        Self {
+            rate: RATE,
+            optim_iter: 60,
+            max_iter: 60,
+        }
+    }
+}
 
 pub struct MissileState {
     pub pos: Vec2<f64>,
@@ -13,7 +27,10 @@ pub struct MissileState {
     pub target_prediction: Vec<Vec2<f64>>,
 }
 
-pub fn simulate_missile(pos: Vec2<f64>) -> Result<Vec<MissileState>, String> {
+pub fn simulate_missile(
+    pos: Vec2<f64>,
+    params: &MissileParams,
+) -> Result<Vec<MissileState>, String> {
     let tape = Tape::new();
     let model = get_model(&tape, pos);
 
@@ -34,19 +51,10 @@ pub fn simulate_missile(pos: Vec2<f64>) -> Result<Vec<MissileState>, String> {
         model.target_hist.len()
     );
 
-    let mut f = File::create("missile_model.csv")
-        .map(BufWriter::new)
-        .unwrap();
-    writeln!(&mut f, "t, x1, y1, vx1, vy1, x2, y2, vx2, vy2").unwrap();
-
-    let mut loss_f = File::create("missile_loss.csv")
-        .map(BufWriter::new)
-        .unwrap();
-
     let mut rng = Xor128::new(12321);
-    Ok((0..30)
+    Ok((0..params.max_iter)
         .map(|t| {
-            let (thrust, heading) = optimize(&model, t, &mut f, &mut loss_f);
+            let (thrust, heading) = optimize(&model, t, params);
             let (pos, target) = simulate_step(&model, &mut rng, t, heading, thrust);
             MissileState {
                 pos,
@@ -75,7 +83,7 @@ const DRAG: f64 = 0.05;
 const TARGET_X: f64 = 20.;
 const TARGET_VX: f64 = 0.5;
 
-fn optimize(model: &Model, t: usize, f: &mut impl Write, loss_f: &mut impl Write) -> (f64, f64) {
+fn optimize(model: &Model, t: usize, params: &MissileParams) -> (f64, f64) {
     for (t2, target) in model.target_hist.iter().enumerate() {
         target
             .x
@@ -91,7 +99,7 @@ fn optimize(model: &Model, t: usize, f: &mut impl Write, loss_f: &mut impl Write
     let mut thrust = 0.;
     let mut heading = 0.;
 
-    for _ in 0..30 {
+    for _ in 0..params.optim_iter {
         model.loss.eval();
         model.loss.backprop().unwrap();
         d_thrust = model.thrust.grad().unwrap();
@@ -104,13 +112,11 @@ fn optimize(model: &Model, t: usize, f: &mut impl Write, loss_f: &mut impl Write
         model.heading.set(heading).unwrap();
     }
 
-    print_csv(&model, f);
     let loss_val = model.loss.eval_noclear();
     println!(
         "thrust: {}, heading: {}, loss: {}",
         d_thrust, d_heading, loss_val
     );
-    writeln!(loss_f, "{}, {}", t, loss_val).unwrap();
 
     (thrust, heading)
 }
@@ -152,28 +158,6 @@ fn simulate_step(
     }
     let target_pos = model.target_hist.first().unwrap().map(|x| x.eval());
     (oldpos, target_pos)
-}
-
-fn print_csv(model: &Model, writer: &mut impl Write) {
-    for (t, (b1, b2)) in model
-        .missile_hist
-        .iter()
-        .zip(model.target_hist.iter())
-        .enumerate()
-    {
-        writeln!(
-            writer,
-            "{}, {}, {}, {}, {}, {}, {}",
-            t,
-            b1.pos.x.data().unwrap(),
-            b1.pos.y.data().unwrap(),
-            b1.velo.x.eval_noclear(),
-            b1.velo.y.eval_noclear(),
-            b2.x.data().unwrap(),
-            b2.y.data().unwrap()
-        )
-        .unwrap();
-    }
 }
 
 #[derive(Clone, Copy)]
