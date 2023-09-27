@@ -257,12 +257,14 @@ impl LanderApp {
                 }
             });
 
-            lander_simulate_step(
-                &mut self.lander_state,
-                self.h_thrust,
-                self.v_thrust,
-                self.playback_speed as f64,
-            );
+            if !self.paused {
+                lander_simulate_step(
+                    &mut self.lander_state,
+                    self.h_thrust,
+                    self.v_thrust,
+                    self.playback_speed as f64,
+                );
+            }
         }
 
         if !self.paused {

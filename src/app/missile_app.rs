@@ -5,11 +5,20 @@ use eframe::{
 };
 
 use crate::{
-    missile::{simulate_missile, MissileParams, MissileState},
+    missile::{missile_simulate_step, simulate_missile, MissileParams, MissileState},
     vec2::Vec2,
 };
 
 use super::SCALE;
+
+const MISSILE_STATE: MissileState = MissileState {
+    pos: Vec2 { x: 2., y: 10. },
+    velo: Vec2 { x: 0., y: 0. },
+    target: Vec2 { x: 0., y: 0. },
+    heading: 0.25 * std::f64::consts::PI,
+    prediction: vec![],
+    target_prediction: vec![],
+};
 
 pub struct MissileApp {
     direct_control: bool,
@@ -17,7 +26,10 @@ pub struct MissileApp {
     missile_params: MissileParams,
     t: f64,
     playback_speed: f64,
+    missile_state: MissileState,
     missile_model: Vec<MissileState>,
+    h_thrust: f64,
+    v_thrust: f64,
     error_msg: Option<String>,
 }
 
@@ -35,7 +47,10 @@ impl MissileApp {
             missile_params,
             t: 0.,
             playback_speed: 0.5,
+            missile_state: MISSILE_STATE,
             missile_model,
+            h_thrust: 0.,
+            v_thrust: 0.,
             error_msg,
         }
     }
@@ -91,7 +106,7 @@ impl MissileApp {
                 }
             }
 
-            if let Some(missile_state) = self.missile_model.get(self.t as usize) {
+            let render_missile = |missile_state: &MissileState| {
                 let render_path = |prediction: &[Vec2<f64>], color: Color32| {
                     let pos = prediction.iter().map(|x| to_pos2(*x)).collect();
                     let path = PathShape::line(pos, (2., color));
@@ -146,10 +161,12 @@ impl MissileApp {
                     Color32::GREEN,
                     (1., Color32::YELLOW),
                 );
-            }
+            };
 
             if self.direct_control {
-            } else if let Some(_state) = self.missile_model.get(self.t as usize) {
+                render_missile(&self.missile_state);
+            } else if let Some(missile_state) = self.missile_model.get(self.t as usize) {
+                render_missile(missile_state);
             } else {
                 self.t = 0.;
             }
@@ -159,7 +176,7 @@ impl MissileApp {
     pub fn update_panel(&mut self, ui: &mut Ui) {
         ui.checkbox(&mut self.direct_control, "direct_control");
         if ui.button("Reset").clicked() {
-            // self.missile_state = LANDER_STATE;
+            self.missile_state = MISSILE_STATE;
             self.t = 0.;
         }
         ui.checkbox(&mut self.paused, "Paused");
@@ -185,7 +202,31 @@ impl MissileApp {
         ));
     }
 
-    pub fn update(&mut self, _ctx: &Context) {
+    pub fn update(&mut self, ctx: &Context) {
+        if self.direct_control {
+            ctx.input(|input| {
+                self.h_thrust = 0.;
+                self.v_thrust = 0.;
+                for key in input.keys_down.iter() {
+                    match key {
+                        egui::Key::A => self.h_thrust = -crate::missile::MAX_THRUST,
+                        egui::Key::D => self.h_thrust = crate::missile::MAX_THRUST,
+                        egui::Key::W => self.v_thrust = crate::missile::MAX_THRUST,
+                        _ => {}
+                    }
+                }
+            });
+
+            if !self.paused {
+                missile_simulate_step(
+                    &mut self.missile_state,
+                    self.h_thrust,
+                    self.v_thrust,
+                    self.playback_speed as f64,
+                );
+            }
+        }
+
         if !self.paused {
             self.t += self.playback_speed;
         }

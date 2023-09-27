@@ -20,6 +20,7 @@ impl Default for MissileParams {
 
 pub struct MissileState {
     pub pos: Vec2<f64>,
+    pub velo: Vec2<f64>,
     pub target: Vec2<f64>,
     pub heading: f64,
     pub prediction: Vec<Vec2<f64>>,
@@ -54,10 +55,12 @@ pub fn simulate_missile(
     (0..params.max_iter)
         .map(|t| {
             let (h_thrust, v_thrust) = optimize(&model, t, params)?;
-            let heading = model.missile_hist.first().unwrap().heading.data().unwrap();
+            let first = model.missile_hist.first().unwrap();
+            let heading = first.heading.data().unwrap();
             let (pos, target) = simulate_step(&model, &mut rng, t, h_thrust, v_thrust);
             Ok(MissileState {
                 pos,
+                velo: first.velo.map(|x| x.eval_noclear()),
                 target,
                 heading,
                 prediction: model
@@ -75,7 +78,7 @@ pub fn simulate_missile(
         .collect()
 }
 
-const MAX_THRUST: f64 = 0.09;
+pub const MAX_THRUST: f64 = 0.09;
 const RATE: f64 = 3e-4;
 const GM: f64 = 0.03;
 const DRAG: f64 = 0.05;
@@ -177,6 +180,36 @@ fn simulate_step(
     }
     let target_pos = model.target_hist.first().unwrap().map(|x| x.eval());
     (oldpos, target_pos)
+}
+
+pub fn missile_simulate_step(
+    missile: &mut MissileState,
+    // t: usize,
+    h_thrust: f64,
+    v_thrust: f64,
+    delta_time: f64,
+) {
+    let heading = missile.heading;
+    let thrust_vec = Vec2::<f64> {
+        x: heading.sin() * v_thrust,
+        y: heading.cos() * v_thrust,
+    };
+    let velo = missile.velo;
+    let velolen2 = velo.x * velo.x + velo.y * velo.y;
+    let next_heading = heading + h_thrust * delta_time;
+    let mut accel = Vec2::<f64> { x: 0., y: -GM } + thrust_vec;
+    if velolen2 != 0. {
+        let velolen = velolen2.sqrt();
+        accel -= velo * DRAG / velolen;
+    }
+    let delta_x2 = velo + accel * 0.5 * delta_time;
+    let oldpos = missile.pos;
+    let newpos = oldpos + delta_x2 * delta_time;
+    missile.pos = newpos;
+    let newvelo = missile.velo + accel * delta_time;
+    missile.velo = newvelo;
+    missile.heading = next_heading;
+    missile.target.x += -TARGET_VX * delta_time;
 }
 
 #[derive(Clone, Copy)]
