@@ -42,7 +42,7 @@ fn main() {
         eframe::start_web(
             "the_canvas_id", // hardcode it
             web_options,
-            Box::new(|cc| Box::new(LanderApp::new())),
+            Box::new(|cc| Box::new(RustrolApp::new())),
         )
         .await
         .expect("failed to start eframe");
