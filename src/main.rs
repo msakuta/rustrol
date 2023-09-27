@@ -1,6 +1,7 @@
 mod app;
 mod lander;
 mod missile;
+mod vec2;
 mod xor128;
 
 use crate::app::RustrolApp;

@@ -4,8 +4,9 @@ use eframe::{
 };
 
 use super::{LANDER_LEG_OFFSET, SCALE};
-use crate::lander::{
-    lander_simulate_step, simulate_lander, LanderModel, LanderParams, LanderState, Vec2,
+use crate::{
+    lander::{lander_simulate_step, simulate_lander, LanderModel, LanderParams, LanderState},
+    vec2::Vec2,
 };
 
 pub struct LanderApp {

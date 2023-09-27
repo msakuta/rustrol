@@ -3,7 +3,10 @@ use eframe::{
     epaint::{pos2, vec2, Color32, PathShape, Pos2, Rect},
 };
 
-use crate::missile::{simulate_missile, MissileState, Vec2};
+use crate::{
+    missile::{simulate_missile, MissileState},
+    vec2::Vec2,
+};
 
 use super::SCALE;
 
