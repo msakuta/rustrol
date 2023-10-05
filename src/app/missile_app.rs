@@ -7,6 +7,7 @@ use eframe::{
 use crate::{
     missile::{missile_simulate_step, simulate_missile, MissileParams, MissileState},
     vec2::Vec2,
+    xor128::Xor128,
 };
 
 use super::SCALE;
@@ -25,6 +26,8 @@ pub struct MissileApp {
     paused: bool,
     missile_params: MissileParams,
     t: f64,
+    randomize: bool,
+    rng: Xor128,
     playback_speed: f64,
     missile_state: MissileState,
     missile_model: Vec<MissileState>,
@@ -46,6 +49,8 @@ impl MissileApp {
             paused: false,
             missile_params,
             t: 0.,
+            randomize: true,
+            rng: Xor128::new(3232123),
             playback_speed: 0.5,
             missile_state: MISSILE_STATE,
             missile_model,
@@ -98,11 +103,7 @@ impl MissileApp {
 
             if response.clicked() {
                 if let Some(mouse_pos) = response.interact_pointer_pos() {
-                    match simulate_missile(from_pos2(mouse_pos), &self.missile_params) {
-                        Ok(res) => self.missile_model = res,
-                        Err(e) => self.error_msg = Some(e.to_string()),
-                    }
-                    self.t = 0.;
+                    self.try_simulate_missile(from_pos2(mouse_pos));
                 }
             }
 
@@ -168,9 +169,23 @@ impl MissileApp {
             } else if let Some(missile_state) = self.missile_model.get(self.t as usize) {
                 render_missile(missile_state);
             } else {
+                if self.randomize {
+                    let x = 30. * (self.rng.next() - 0.5);
+                    let y = 30. * (self.rng.next() - 0.5);
+                    println!("randomize x: {x}, y: {y}");
+                    self.try_simulate_missile(Vec2 { x, y });
+                }
                 self.t = 0.;
             }
         });
+    }
+
+    fn try_simulate_missile(&mut self, pos: Vec2<f64>) {
+        match simulate_missile(pos, &self.missile_params) {
+            Ok(res) => self.missile_model = res,
+            Err(e) => self.error_msg = Some(e.to_string()),
+        }
+        self.t = 0.;
     }
 
     pub fn update_panel(&mut self, ui: &mut Ui) {
@@ -180,6 +195,7 @@ impl MissileApp {
             self.t = 0.;
         }
         ui.checkbox(&mut self.paused, "Paused");
+        ui.checkbox(&mut self.randomize, "Randomize");
         ui.label("Playback speed (times 60fps):");
         ui.add(egui::widgets::Slider::new(
             &mut self.playback_speed,
