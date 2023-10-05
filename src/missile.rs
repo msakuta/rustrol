@@ -32,10 +32,11 @@ pub struct MissileState {
 
 pub fn simulate_missile(
     pos: Vec2<f64>,
+    heading: f64,
     params: &MissileParams,
 ) -> Result<Vec<MissileState>, GradDoesNotExist> {
     let tape = Tape::new();
-    let model = get_model(&tape, pos);
+    let model = get_model(&tape, pos, heading);
 
     // if let Ok(f) = std::fs::File::create("graph.dot") {
     //     let x2 = model.hist1.first().unwrap().pos;
@@ -275,7 +276,7 @@ struct Model<'a> {
     loss: TapeTerm<'a>,
 }
 
-fn get_model<'a>(tape: &'a Tape<f64>, pos: Vec2<f64>) -> Model<'a> {
+fn get_model<'a>(tape: &'a Tape<f64>, pos: Vec2<f64>, heading: f64) -> Model<'a> {
     let missile = MissileTape {
         h_thrust: tape.term("h_thrust", 0.0),
         v_thrust: tape.term("v_thrust", 0.01),
@@ -287,7 +288,7 @@ fn get_model<'a>(tape: &'a Tape<f64>, pos: Vec2<f64>) -> Model<'a> {
             x: tape.term("vx1", 0.05),
             y: tape.term("vy1", 0.05),
         },
-        heading: tape.term("heading", std::f64::consts::PI / 4.),
+        heading: tape.term("heading", heading),
         accel: Vec2 {
             x: tape.term("ax1", 0.),
             y: tape.term("ay1", 0.),

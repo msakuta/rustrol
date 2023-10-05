@@ -12,6 +12,8 @@ use crate::{
 
 use super::SCALE;
 
+const DEFAULT_ORIENTATION: f64 = std::f64::consts::PI / 4.;
+
 const MISSILE_STATE: MissileState = MissileState {
     pos: Vec2 { x: 2., y: 10. },
     velo: Vec2 { x: 0., y: 0. },
@@ -40,7 +42,7 @@ impl MissileApp {
     pub fn new() -> Self {
         let missile_params = MissileParams::default();
         let (missile_model, error_msg) =
-            match simulate_missile(Vec2 { x: 0., y: 0. }, &missile_params) {
+            match simulate_missile(Vec2 { x: 0., y: 0. }, DEFAULT_ORIENTATION, &missile_params) {
                 Ok(res) => (res, None),
                 Err(e) => (vec![], Some(e.to_string())),
             };
@@ -103,7 +105,7 @@ impl MissileApp {
 
             if response.clicked() {
                 if let Some(mouse_pos) = response.interact_pointer_pos() {
-                    self.try_simulate_missile(from_pos2(mouse_pos));
+                    self.try_simulate_missile(from_pos2(mouse_pos), DEFAULT_ORIENTATION);
                 }
             }
 
@@ -172,16 +174,17 @@ impl MissileApp {
                 if self.randomize {
                     let x = 30. * (self.rng.next() - 0.5);
                     let y = 30. * (self.rng.next() - 0.5);
-                    println!("randomize x: {x}, y: {y}");
-                    self.try_simulate_missile(Vec2 { x, y });
+                    let orientation = 2. * std::f64::consts::PI * (self.rng.next() - 0.5);
+                    println!("randomize x: {x}, y: {y}, orientation: {orientation}");
+                    self.try_simulate_missile(Vec2 { x, y }, orientation);
                 }
                 self.t = 0.;
             }
         });
     }
 
-    fn try_simulate_missile(&mut self, pos: Vec2<f64>) {
-        match simulate_missile(pos, &self.missile_params) {
+    fn try_simulate_missile(&mut self, pos: Vec2<f64>, heading: f64) {
+        match simulate_missile(pos, heading, &self.missile_params) {
             Ok(res) => self.missile_model = res,
             Err(e) => self.error_msg = Some(e.to_string()),
         }
