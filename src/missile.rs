@@ -18,6 +18,9 @@ impl Default for MissileParams {
     }
 }
 
+const HIT_DISTANCE: f64 = 1.;
+const HIT_DISTANCE2: f64 = HIT_DISTANCE * HIT_DISTANCE;
+
 pub struct MissileState {
     pub pos: Vec2<f64>,
     pub velo: Vec2<f64>,
@@ -52,30 +55,32 @@ pub fn simulate_missile(
     );
 
     let mut rng = Xor128::new(12321);
-    (0..params.max_iter)
-        .map(|t| {
-            let (h_thrust, v_thrust) = optimize(&model, t, params)?;
-            let first = model.missile_hist.first().unwrap();
-            let heading = first.heading.data().unwrap();
-            let (pos, target) = simulate_step(&model, &mut rng, t, h_thrust, v_thrust);
-            Ok(MissileState {
-                pos,
-                velo: first.velo.map(|x| x.eval_noclear()),
-                target,
-                heading,
-                prediction: model
-                    .missile_hist
-                    .iter()
-                    .map(|b1| b1.pos.map(|x| x.eval()))
-                    .collect(),
-                target_prediction: model
-                    .target_hist
-                    .iter()
-                    .map(|b1| b1.map(|x| x.eval()))
-                    .collect(),
-            })
-        })
-        .collect()
+    let mut hist = vec![];
+    for t in 0..params.max_iter {
+        let (h_thrust, v_thrust) = optimize(&model, t, params)?;
+        let first = model.missile_hist.first().unwrap();
+        let heading = first.heading.data().unwrap();
+        let Some((pos, target)) = simulate_step(&model, &mut rng, t, h_thrust, v_thrust) else {
+            break;
+        };
+        hist.push(MissileState {
+            pos,
+            velo: first.velo.map(|x| x.eval_noclear()),
+            target,
+            heading,
+            prediction: model
+                .missile_hist
+                .iter()
+                .map(|b1| b1.pos.map(|x| x.eval()))
+                .collect(),
+            target_prediction: model
+                .target_hist
+                .iter()
+                .map(|b1| b1.map(|x| x.eval()))
+                .collect(),
+        });
+    }
+    Ok(hist)
 }
 
 pub const MAX_THRUST: f64 = 0.09;
@@ -146,7 +151,7 @@ fn simulate_step(
     t: usize,
     h_thrust: f64,
     v_thrust: f64,
-) -> (Vec2<f64>, Vec2<f64>) {
+) -> Option<(Vec2<f64>, Vec2<f64>)> {
     let missile = model.missile_hist.first().unwrap();
     let heading = missile.heading.data().unwrap();
     let thrust_vec = Vec2::<f64> {
@@ -166,6 +171,14 @@ fn simulate_step(
     let delta_x2 = velo + accel * 0.5;
     let oldpos = missile.pos.map(|x| x.data().unwrap());
     let newpos = oldpos + delta_x2;
+    let target = model
+        .target_hist
+        .first()
+        .unwrap()
+        .map(|x| x.data().unwrap());
+    if (newpos - target).length2() < HIT_DISTANCE2 {
+        return None;
+    }
     missile.pos.x.set(newpos.x).unwrap();
     missile.pos.y.set(newpos.y).unwrap();
     let newvelo = missile.velo.map(|x| x.data().unwrap()) + accel;
@@ -179,7 +192,7 @@ fn simulate_step(
             .unwrap();
     }
     let target_pos = model.target_hist.first().unwrap().map(|x| x.eval());
-    (oldpos, target_pos)
+    Some((oldpos, target_pos))
 }
 
 pub fn missile_simulate_step(

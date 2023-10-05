@@ -17,6 +17,16 @@ impl<T: Copy> Vec2<T> {
     }
 }
 
+impl Vec2<f64> {
+    pub fn length2(&self) -> f64 {
+        self.x * self.x + self.y * self.y
+    }
+
+    pub fn length(&self) -> f64 {
+        self.length2().sqrt()
+    }
+}
+
 impl<T> From<[T; 2]> for Vec2<T> {
     fn from([x, y]: [T; 2]) -> Self {
         Vec2 { x, y }
