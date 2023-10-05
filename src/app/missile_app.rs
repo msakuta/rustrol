@@ -67,7 +67,7 @@ impl MissileApp {
             let from_screen = to_screen.inverse();
 
             let canvas_offset_x = response.rect.width() * 0.5;
-            let canvas_offset_y = response.rect.height() * 0.8;
+            let canvas_offset_y = response.rect.height() * 0.5;
 
             let to_pos2 = |pos: Vec2<f64>| {
                 to_screen.transform_pos(pos2(
