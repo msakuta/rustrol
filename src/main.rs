@@ -4,6 +4,7 @@ mod error;
 mod lander;
 mod missile;
 mod ops;
+mod orbital;
 mod vec2;
 mod xor128;
 
