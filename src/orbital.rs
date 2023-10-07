@@ -1,4 +1,4 @@
-use crate::{error::GradDoesNotExist, vec2::Vec2};
+use crate::{error::GradDoesNotExist, ops::MinOp, vec2::Vec2};
 use rustograd::{Tape, TapeTerm};
 
 const RATE: f64 = 3e-4;
@@ -14,7 +14,7 @@ impl Default for OrbitalParams {
         Self {
             rate: RATE,
             optim_iter: 60,
-            max_iter: 60,
+            max_iter: 100,
         }
     }
 }
@@ -22,7 +22,7 @@ impl Default for OrbitalParams {
 pub struct OrbitalState {
     pub pos: Vec2<f64>,
     pub velo: Vec2<f64>,
-    pub target: Vec2<f64>,
+    pub target_pos: Vec2<f64>,
 }
 
 #[derive(Default)]
@@ -38,8 +38,7 @@ pub fn simulate_orbital(
     let tape = Tape::new();
     let model = get_model(&tape, pos, params);
 
-    let last_accel = model.accels.last().unwrap();
-    let last_pos = model.xs.last().unwrap();
+    let last_state = model.states.last().unwrap();
 
     // if let Ok(f) = std::fs::File::create("graph.dot") {
     //     let x2 = model.xs.first().unwrap();
@@ -51,42 +50,41 @@ pub fn simulate_orbital(
     //         .unwrap();
     // }
 
-    println!("size: {}, xs: {}", tape.len(), model.xs.len());
+    println!("tape nodes: {}, states: {}", tape.len(), model.states.len());
 
-    let v0 = model.vs.first().unwrap();
+    let first_state = model.states.first().unwrap();
 
     model.loss.eval();
     model.loss.backprop().unwrap();
-    let xd = try_grad!(v0.x);
-    let yd = try_grad!(v0.y);
+    let xd = try_grad!(first_state.velo.x);
+    let yd = try_grad!(first_state.velo.y);
 
-    let eval = [last_pos.x.eval(), last_pos.y.eval()];
+    let eval = [last_state.pos.x.eval(), last_state.pos.y.eval()];
     println!(
         "eval: {eval:?}, accel.eval: {:?}",
-        [last_accel.x.eval(), last_accel.y.eval()]
+        [last_state.accel.x.eval(), last_state.accel.y.eval()]
     );
     println!("simulate_orbital: derive(vx, vy): {:?}, {:?}", xd, yd);
 
     let before_optim = model
-        .xs
+        .states
         .iter()
-        .zip(model.vs.iter())
-        .map(|(pos, velo)| OrbitalState {
-            pos: pos.map(|x| x.eval()),
-            velo: velo.map(|x| x.eval()),
-            target: model.target.map(|x| x.eval_noclear()),
+        .map(|state| OrbitalState {
+            pos: state.pos.map(|x| x.eval()),
+            velo: state.velo.map(|x| x.eval()),
+            target_pos: state.target_pos.map(|x| x.eval_noclear()),
         })
         .collect();
 
-    const RATE: f64 = 5e-5;
+    const RATE: f64 = 1e-5;
 
     // optimization loop
     for i in 0..params.optim_iter {
         model.loss.eval();
         model.loss.backprop().unwrap();
-        let xd = v0.x.grad().unwrap();
-        let yd = v0.y.grad().unwrap();
-        let first_velo = model.vs.first().unwrap();
+        let xd = try_grad!(first_state.velo.x);
+        let yd = try_grad!(first_state.velo.y);
+        let first_velo = first_state.velo;
         first_velo
             .x
             .set(first_velo.x.data().unwrap() - xd * RATE)
@@ -105,13 +103,12 @@ pub fn simulate_orbital(
     Ok(OrbitalResult {
         before_optim,
         after_optim: model
-            .xs
+            .states
             .iter()
-            .zip(model.vs.iter())
-            .map(|(pos, velo)| OrbitalState {
-                pos: pos.map(|x| x.eval()),
-                velo: velo.map(|x| x.eval()),
-                target: model.target.map(|x| x.eval_noclear()),
+            .map(|state| OrbitalState {
+                pos: state.pos.map(|x| x.eval()),
+                velo: state.velo.map(|x| x.eval()),
+                target_pos: state.target_pos.map(|x| x.eval_noclear()),
             })
             .collect(),
     })
@@ -119,11 +116,15 @@ pub fn simulate_orbital(
 
 const GM: f64 = 0.03;
 
+struct ModelState<'a> {
+    accel: Vec2<TapeTerm<'a>>,
+    pos: Vec2<TapeTerm<'a>>,
+    velo: Vec2<TapeTerm<'a>>,
+    target_pos: Vec2<TapeTerm<'a>>,
+}
+
 struct Model<'a> {
-    accels: Vec<Vec2<TapeTerm<'a>>>,
-    vs: Vec<Vec2<TapeTerm<'a>>>,
-    xs: Vec<Vec2<TapeTerm<'a>>>,
-    target: Vec2<TapeTerm<'a>>,
+    states: Vec<ModelState<'a>>,
     loss: TapeTerm<'a>,
 }
 
@@ -132,9 +133,17 @@ fn get_model<'a>(tape: &'a Tape<f64>, initial_pos: Vec2<f64>, params: &OrbitalPa
         x: tape.term("x", initial_pos.x),
         y: tape.term("y", initial_pos.y),
     };
-    let mut vx = Vec2 {
+    let mut velo = Vec2 {
         x: tape.term("vx", 0.),
-        y: tape.term("vy", 0.15),
+        y: tape.term("vy", 0.1),
+    };
+    let mut target_pos = Vec2 {
+        x: tape.term("target_x", 0.),
+        y: tape.term("target_y", 2.),
+    };
+    let mut target_velo = Vec2 {
+        x: tape.term("target_vx", -0.12),
+        y: tape.term("target_vy", 0.0),
     };
     let earth = Vec2 {
         x: tape.term("bx", 0.),
@@ -142,38 +151,52 @@ fn get_model<'a>(tape: &'a Tape<f64>, initial_pos: Vec2<f64>, params: &OrbitalPa
     };
 
     let gm = tape.term("GM", GM);
-
+    let zero = tape.term("0", 0.);
     let half = tape.term("0.5", 0.5);
-    let mut accels = vec![];
-    let mut vs = vec![vx];
-    let mut xs = vec![pos];
-    for _ in 0..params.max_iter {
+    let mut states = vec![ModelState {
+        accel: Vec2 { x: zero, y: zero },
+        pos,
+        velo,
+        target_pos,
+    }];
+
+    let simulate_step = |pos, vx| {
         let accel = gravity(earth, pos, gm);
         let delta_x = vx + accel * half;
         let accel2 = gravity(earth, pos + delta_x * half, gm);
         let delta_x2 = vx + accel * half;
-        pos = pos + delta_x2;
-        accels.push(accel2);
-        xs.push(pos);
-        vx = vx + accel2;
-        vs.push(vx);
-    }
-
-    let target = Vec2 {
-        x: tape.term("target_x", -1.5),
-        y: tape.term("target_y", 0.),
+        let pos = pos + delta_x2;
+        let vx = vx + accel2;
+        (pos, vx, accel2)
     };
-    let last_pos = xs[18];
-    let diff = last_pos - target;
-    let loss = diff.x * diff.x + diff.y * diff.y;
 
-    Model {
-        accels,
-        xs,
-        vs,
-        target,
-        loss,
+    for _ in 0..params.max_iter {
+        let (pos2, vx2, accel) = simulate_step(pos, velo);
+        (pos, velo) = (pos2, vx2);
+        let (target_pos2, target_velo2, _target_accel2) = simulate_step(target_pos, target_velo);
+        (target_pos, target_velo) = (target_pos2, target_velo2);
+        states.push(ModelState {
+            accel,
+            pos,
+            velo,
+            target_pos,
+        });
     }
+
+    let loss = states
+        .iter()
+        .fold(None, |acc: Option<TapeTerm<'a>>, state| {
+            let diff = state.pos - state.target_pos;
+            let loss = diff.x * diff.x + diff.y * diff.y;
+            if let Some(acc) = acc {
+                Some(acc.apply_bin(loss, Box::new(MinOp)))
+            } else {
+                Some(loss)
+            }
+        })
+        .unwrap();
+
+    Model { states, loss }
 }
 
 fn gravity<'a>(

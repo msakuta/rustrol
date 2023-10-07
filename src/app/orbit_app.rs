@@ -15,9 +15,9 @@ const SCALE: f32 = 50.;
 const DEFAULT_ORIENTATION: f64 = std::f64::consts::PI / 4.;
 
 const MISSILE_STATE: OrbitalState = OrbitalState {
-    pos: Vec2 { x: 1., y: 0. },
+    pos: Vec2 { x: 2., y: 0. },
     velo: Vec2 { x: 0., y: 0.15 },
-    target: Vec2 { x: 0., y: 0. },
+    target_pos: Vec2 { x: 0., y: 0. },
     // heading: 0.25 * std::f64::consts::PI,
     // prediction: vec![],
     // target_prediction: vec![],
@@ -110,6 +110,22 @@ impl OrbitalApp {
                 }
             }
 
+            let shortest_idx = self
+                .orbital_model
+                .after_optim
+                .iter()
+                .enumerate()
+                .fold(None, |acc: Option<(usize, f64)>, cur| {
+                    let diff = cur.1.pos - cur.1.target_pos;
+                    let dist = diff.x * diff.x + diff.y * diff.y;
+                    if let Some(acc) = acc {
+                        Some(if acc.1 < dist { acc } else { (cur.0, dist) })
+                    } else {
+                        Some((cur.0, dist))
+                    }
+                })
+                .map(|(i, _)| i);
+
             let render_path = |poses: &[Vec2<f64>], color: Color32| {
                 let pos = poses.iter().map(|x| to_pos2(*x)).collect();
                 let path = PathShape::line(pos, (2., color));
@@ -133,6 +149,30 @@ impl OrbitalApp {
                     .collect::<Vec<_>>(),
                 Color32::from_rgb(191, 191, 191),
             );
+            render_path(
+                &self
+                    .orbital_model
+                    .before_optim
+                    .iter()
+                    .map(|x| x.target_pos)
+                    .collect::<Vec<_>>(),
+                Color32::from_rgb(191, 63, 191),
+            );
+
+            if let Some(idx) = shortest_idx {
+                painter.circle(
+                    to_pos2(self.orbital_model.after_optim[idx].pos),
+                    3.,
+                    Color32::from_rgb(191, 191, 191),
+                    (1., Color32::BLACK),
+                );
+                painter.circle(
+                    to_pos2(self.orbital_model.after_optim[idx].target_pos),
+                    3.,
+                    Color32::from_rgb(191, 63, 191),
+                    (1., Color32::BLACK),
+                );
+            }
 
             let render_orbit = |orbital_state: &OrbitalState| {
                 let missile_pos = to_pos2(orbital_state.pos).to_vec2();
@@ -176,7 +216,7 @@ impl OrbitalApp {
                 );
 
                 painter.circle(
-                    to_pos2(orbital_state.target),
+                    to_pos2(orbital_state.target_pos),
                     5.,
                     Color32::GREEN,
                     (1., Color32::YELLOW),
@@ -202,6 +242,7 @@ impl OrbitalApp {
     }
 
     fn try_simulate_missile(&mut self, pos: Vec2<f64>, heading: f64) {
+        self.orbital_state.pos = pos;
         match simulate_orbital(pos, &self.orbital_params) {
             Ok(res) => self.orbital_model = res,
             Err(e) => self.error_msg = Some(e.to_string()),
@@ -213,6 +254,7 @@ impl OrbitalApp {
         ui.checkbox(&mut self.direct_control, "direct_control");
         if ui.button("Reset").clicked() {
             self.orbital_state = MISSILE_STATE;
+            self.try_simulate_missile(self.orbital_state.pos, DEFAULT_ORIENTATION);
             self.t = 0.;
         }
         ui.checkbox(&mut self.paused, "Paused");
