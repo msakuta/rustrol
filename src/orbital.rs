@@ -25,6 +25,12 @@ pub struct OrbitalState {
     pub target_pos: Vec2<f64>,
 }
 
+pub const ORBITAL_STATE: OrbitalState = OrbitalState {
+    pos: Vec2 { x: 2., y: 0. },
+    velo: Vec2 { x: 0., y: 0.15 },
+    target_pos: Vec2 { x: 0., y: 0. },
+};
+
 #[derive(Default)]
 pub struct OrbitalResult {
     pub before_optim: Vec<OrbitalState>,
@@ -114,6 +120,28 @@ pub fn simulate_orbital(
     })
 }
 
+const THRUST_ACCEL: f64 = 0.1;
+
+pub fn orbital_simulate_step(
+    state: &mut OrbitalState,
+    h_thrust: f64,
+    v_thrust: f64,
+    delta_time: f64,
+) -> Vec2<f64> {
+    let thrust = Vec2 {
+        x: h_thrust,
+        y: v_thrust,
+    } * THRUST_ACCEL;
+    let accel = gravity_f64(EARTH_POS, state.pos, GM) + thrust;
+    let delta_x = state.velo + accel * 0.5 * delta_time;
+    let accel2 = gravity_f64(EARTH_POS, state.pos + delta_x * 0.5, GM) + thrust;
+    let delta_x2 = state.velo + accel2 * 0.5 * delta_time;
+    state.pos = state.pos + delta_x2 * delta_time;
+    state.velo = state.velo + accel2 * delta_time;
+    accel2
+}
+
+const EARTH_POS: Vec2<f64> = Vec2 { x: 0., y: 0. };
 const GM: f64 = 0.03;
 
 struct ModelState<'a> {
@@ -164,7 +192,7 @@ fn get_model<'a>(tape: &'a Tape<f64>, initial_pos: Vec2<f64>, params: &OrbitalPa
         let accel = gravity(earth, pos, gm);
         let delta_x = vx + accel * half;
         let accel2 = gravity(earth, pos + delta_x * half, gm);
-        let delta_x2 = vx + accel * half;
+        let delta_x2 = vx + accel2 * half;
         let pos = pos + delta_x2;
         let vx = vx + accel2;
         (pos, vx, accel2)
@@ -211,5 +239,12 @@ fn gravity<'a>(
         |x| x.powf(3. / 2.),
         |x| 3. / 2. * x.powf(1. / 2.),
     );
+    diff / len32 * gm
+}
+
+fn gravity_f64(earth: Vec2<f64>, pos: Vec2<f64>, gm: f64) -> Vec2<f64> {
+    let diff = earth - pos;
+    let len2 = diff.x * diff.x + diff.y * diff.y;
+    let len32 = len2.powf(3. / 2.);
     diff / len32 * gm
 }

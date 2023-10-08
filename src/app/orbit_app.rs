@@ -5,7 +5,10 @@ use eframe::{
 };
 
 use crate::{
-    orbital::{simulate_orbital, OrbitalParams, OrbitalResult, OrbitalState},
+    orbital::{
+        orbital_simulate_step, simulate_orbital, OrbitalParams, OrbitalResult, OrbitalState,
+        ORBITAL_STATE,
+    },
     vec2::Vec2,
     xor128::Xor128,
 };
@@ -13,15 +16,6 @@ use crate::{
 const SCALE: f32 = 50.;
 
 const DEFAULT_ORIENTATION: f64 = std::f64::consts::PI / 4.;
-
-const MISSILE_STATE: OrbitalState = OrbitalState {
-    pos: Vec2 { x: 2., y: 0. },
-    velo: Vec2 { x: 0., y: 0.15 },
-    target_pos: Vec2 { x: 0., y: 0. },
-    // heading: 0.25 * std::f64::consts::PI,
-    // prediction: vec![],
-    // target_prediction: vec![],
-};
 
 pub struct OrbitalApp {
     direct_control: bool,
@@ -41,7 +35,7 @@ pub struct OrbitalApp {
 impl OrbitalApp {
     pub fn new() -> Self {
         let orbital_params = OrbitalParams::default();
-        let orbital_state = MISSILE_STATE;
+        let orbital_state = ORBITAL_STATE;
         let (orbital_model, error_msg) = match simulate_orbital(orbital_state.pos, &orbital_params)
         {
             Ok(res) => (res, None),
@@ -110,68 +104,70 @@ impl OrbitalApp {
                 }
             }
 
-            let shortest_idx = self
-                .orbital_model
-                .after_optim
-                .iter()
-                .enumerate()
-                .fold(None, |acc: Option<(usize, f64)>, cur| {
-                    let diff = cur.1.pos - cur.1.target_pos;
-                    let dist = diff.x * diff.x + diff.y * diff.y;
-                    if let Some(acc) = acc {
-                        Some(if acc.1 < dist { acc } else { (cur.0, dist) })
-                    } else {
-                        Some((cur.0, dist))
-                    }
-                })
-                .map(|(i, _)| i);
-
-            let render_path = |poses: &[Vec2<f64>], color: Color32| {
-                let pos = poses.iter().map(|x| to_pos2(*x)).collect();
-                let path = PathShape::line(pos, (2., color));
-                painter.add(path);
-            };
-            render_path(
-                &self
-                    .orbital_model
-                    .before_optim
-                    .iter()
-                    .map(|x| x.pos)
-                    .collect::<Vec<_>>(),
-                Color32::from_rgb(63, 63, 191),
-            );
-            render_path(
-                &self
+            if !self.direct_control {
+                let shortest_idx = self
                     .orbital_model
                     .after_optim
                     .iter()
-                    .map(|x| x.pos)
-                    .collect::<Vec<_>>(),
-                Color32::from_rgb(191, 191, 191),
-            );
-            render_path(
-                &self
-                    .orbital_model
-                    .before_optim
-                    .iter()
-                    .map(|x| x.target_pos)
-                    .collect::<Vec<_>>(),
-                Color32::from_rgb(191, 63, 191),
-            );
+                    .enumerate()
+                    .fold(None, |acc: Option<(usize, f64)>, cur| {
+                        let diff = cur.1.pos - cur.1.target_pos;
+                        let dist = diff.x * diff.x + diff.y * diff.y;
+                        if let Some(acc) = acc {
+                            Some(if acc.1 < dist { acc } else { (cur.0, dist) })
+                        } else {
+                            Some((cur.0, dist))
+                        }
+                    })
+                    .map(|(i, _)| i);
 
-            if let Some(idx) = shortest_idx {
-                painter.circle(
-                    to_pos2(self.orbital_model.after_optim[idx].pos),
-                    3.,
+                let render_path = |poses: &[Vec2<f64>], color: Color32| {
+                    let pos = poses.iter().map(|x| to_pos2(*x)).collect();
+                    let path = PathShape::line(pos, (2., color));
+                    painter.add(path);
+                };
+                render_path(
+                    &self
+                        .orbital_model
+                        .before_optim
+                        .iter()
+                        .map(|x| x.pos)
+                        .collect::<Vec<_>>(),
+                    Color32::from_rgb(63, 63, 191),
+                );
+                render_path(
+                    &self
+                        .orbital_model
+                        .after_optim
+                        .iter()
+                        .map(|x| x.pos)
+                        .collect::<Vec<_>>(),
                     Color32::from_rgb(191, 191, 191),
-                    (1., Color32::BLACK),
                 );
-                painter.circle(
-                    to_pos2(self.orbital_model.after_optim[idx].target_pos),
-                    3.,
+                render_path(
+                    &self
+                        .orbital_model
+                        .before_optim
+                        .iter()
+                        .map(|x| x.target_pos)
+                        .collect::<Vec<_>>(),
                     Color32::from_rgb(191, 63, 191),
-                    (1., Color32::BLACK),
                 );
+
+                if let Some(idx) = shortest_idx {
+                    painter.circle(
+                        to_pos2(self.orbital_model.after_optim[idx].pos),
+                        3.,
+                        Color32::from_rgb(191, 191, 191),
+                        (1., Color32::BLACK),
+                    );
+                    painter.circle(
+                        to_pos2(self.orbital_model.after_optim[idx].target_pos),
+                        3.,
+                        Color32::from_rgb(191, 63, 191),
+                        (1., Color32::BLACK),
+                    );
+                }
             }
 
             let render_orbit = |orbital_state: &OrbitalState| {
@@ -242,10 +238,15 @@ impl OrbitalApp {
     }
 
     fn try_simulate_missile(&mut self, pos: Vec2<f64>, heading: f64) {
-        self.orbital_state.pos = pos;
-        match simulate_orbital(pos, &self.orbital_params) {
-            Ok(res) => self.orbital_model = res,
-            Err(e) => self.error_msg = Some(e.to_string()),
+        if self.direct_control {
+            self.orbital_state.pos = pos;
+            self.orbital_state.velo = ORBITAL_STATE.velo;
+        } else {
+            self.orbital_state.pos = pos;
+            match simulate_orbital(pos, &self.orbital_params) {
+                Ok(res) => self.orbital_model = res,
+                Err(e) => self.error_msg = Some(e.to_string()),
+            }
         }
         self.t = 0.;
     }
@@ -253,7 +254,7 @@ impl OrbitalApp {
     pub fn update_panel(&mut self, ui: &mut Ui) {
         ui.checkbox(&mut self.direct_control, "direct_control");
         if ui.button("Reset").clicked() {
-            self.orbital_state = MISSILE_STATE;
+            self.orbital_state = ORBITAL_STATE;
             self.try_simulate_missile(self.orbital_state.pos, DEFAULT_ORIENTATION);
             self.t = 0.;
         }
@@ -296,14 +297,14 @@ impl OrbitalApp {
                 }
             });
 
-            // if !self.paused {
-            //     missile_simulate_step(
-            //         &mut self.missile_state,
-            //         self.h_thrust,
-            //         self.v_thrust,
-            //         self.playback_speed as f64,
-            //     );
-            // }
+            if !self.paused {
+                orbital_simulate_step(
+                    &mut self.orbital_state,
+                    self.h_thrust,
+                    self.v_thrust,
+                    self.playback_speed as f64,
+                );
+            }
         }
 
         if !self.paused {
