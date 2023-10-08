@@ -1735,7 +1735,7 @@ dependencies = [
 [[package]]
 name = "rustograd"
 version = "0.1.0"
-source = "git+https://github.com/msakuta/rustograd?branch=master#15a33c4e66267c38f1e18f193d6b729d8c29c6d0"
+source = "git+https://github.com/msakuta/rustograd?branch=master#963d287b12c50ac1836f8d51af7e90d5348b23f2"
 
 [[package]]
 name = "rustrol"

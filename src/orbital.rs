@@ -184,7 +184,7 @@ fn get_model<'a>(tape: &'a Tape<f64>, params: &OrbitalParams) -> Model<'a> {
     };
 
     let gm = tape.term("GM", GM);
-    let zero = tape.term("0", 0.);
+    let zero = tape.zero();
     let half = tape.term("0.5", 0.5);
     let mut states = vec![ModelState {
         accel: Vec2 { x: zero, y: zero },

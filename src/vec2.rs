@@ -30,6 +30,10 @@ impl Vec2<f64> {
     pub fn length(&self) -> f64 {
         self.length2().sqrt()
     }
+
+    pub fn zero() -> Self {
+        Self { x: 0., y: 0. }
+    }
 }
 
 impl<T> From<[T; 2]> for Vec2<T> {
