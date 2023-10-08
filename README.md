@@ -33,6 +33,7 @@ The gym is targetted for reinforcement learning, but actually we can do some dec
 
 A homing missile maneuver with gravity and limited maneuverability.
 It is a little bit more challenging because both the target and the missile are moving.
+Also, there is a gravity pulling the missile down all the time.
 However, it is very easy to define a loss function as the minimum distance between target and missile in every moment.
 
 ![screencapture_missile](images/screencapture_missile.gif)
@@ -41,10 +42,17 @@ However, it is very easy to define a loss function as the minimum distance betwe
 ### Orbital mechanics
 
 An orbital rocket simulation.
-The optimizer can adjust the initial velocity to randezvous with the target object in another orbit.
+The optimizer can adjust the initial velocity to rendezvous with the target object in another orbit.
 It is a tricky problem since moving one way will not bring you to the desired direction at the destination.
 
+* The target object is shown as a green circle.
+* The blue line shows the initial trajectory of the satellite.
+* The grey line shows the trajectory after the optimization.
+* The purple line shows the trajectory of the target object.
+* The circle with black border at the center shows the center of gravity, e.g. the Earth.
+
 ![screencapture_orbital](images/screencapture_orbital.gif)
+
 
 ## Control
 
