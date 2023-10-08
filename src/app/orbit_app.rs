@@ -19,6 +19,7 @@ pub struct OrbitalApp {
     direct_control: bool,
     paused: bool,
     orbital_params: OrbitalParams,
+    prediction_horizon: usize,
     t: f64,
     randomize: bool,
     rng: Xor128,
@@ -42,6 +43,7 @@ impl OrbitalApp {
             direct_control: false,
             paused: false,
             orbital_params,
+            prediction_horizon: 250,
             t: 0.,
             randomize: true,
             rng: Xor128::new(3232123),
@@ -109,13 +111,36 @@ impl OrbitalApp {
                 let mut state = self.orbital_state;
                 let mut positions = vec![];
                 let mut target_positions = vec![];
-                for _ in 0..300 {
-                    orbital_simulate_step(&mut state, 0., 0., self.playback_speed);
+                let mut closest = None;
+                for _ in 0..self.prediction_horizon {
+                    orbital_simulate_step(&mut state, 0., 0., 1.);
+                    let dist2 = (state.pos - state.target_pos).length2();
+                    if closest
+                        .map(|closest: (f64, Vec2<f64>, Vec2<f64>)| dist2 < closest.0)
+                        .unwrap_or(true)
+                    {
+                        closest = Some((dist2, state.pos, state.target_pos));
+                    }
                     positions.push(state.pos);
                     target_positions.push(state.target_pos);
                 }
                 render_path(&positions, Color32::from_rgb(63, 63, 191));
                 render_path(&target_positions, Color32::from_rgb(191, 63, 191));
+
+                if let Some((_, pos, target_pos)) = closest {
+                    painter.circle(
+                        to_pos2(pos),
+                        3.,
+                        Color32::from_rgb(191, 191, 191),
+                        (1., Color32::BLACK),
+                    );
+                    painter.circle(
+                        to_pos2(target_pos),
+                        3.,
+                        Color32::from_rgb(191, 63, 191),
+                        (1., Color32::BLACK),
+                    );
+                }
             } else {
                 let shortest_idx = self
                     .orbital_model
@@ -294,6 +319,11 @@ impl OrbitalApp {
             1e-4..=1e-3,
         ));
         ui.checkbox(&mut self.orbital_params.optim_velo, "Optimize velocity");
+        ui.label("Prediction horizon:");
+        ui.add(egui::widgets::Slider::new(
+            &mut self.prediction_horizon,
+            100..=500,
+        ));
     }
 
     pub fn update(&mut self, ctx: &Context) {
