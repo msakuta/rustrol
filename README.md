@@ -14,10 +14,11 @@ It has native GUI and WebAssembly version that can run on a browser.
 
 ![screenshot](images/screenshot.png)
 
-There are 2 models:
+There are 3 models:
 
 * Lunar Lander
 * Missile
+* Orbital Mechanics
 
 ### Lunar Lander
 
@@ -39,7 +40,7 @@ However, it is very easy to define a loss function as the minimum distance betwe
 ![screencapture_missile](images/screencapture_missile.gif)
 
 
-### Orbital mechanics
+### Orbital Mechanics
 
 An orbital rocket simulation.
 The optimizer can adjust the initial velocity to rendezvous with the target object in another orbit.
