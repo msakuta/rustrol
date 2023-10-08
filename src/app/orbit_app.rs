@@ -99,7 +99,24 @@ impl OrbitalApp {
                 }
             }
 
-            if !self.direct_control {
+            let render_path = |poses: &[Vec2<f64>], color: Color32| {
+                let pos = poses.iter().map(|x| to_pos2(*x)).collect();
+                let path = PathShape::line(pos, (2., color));
+                painter.add(path);
+            };
+
+            if self.direct_control {
+                let mut state = self.orbital_state;
+                let mut positions = vec![];
+                let mut target_positions = vec![];
+                for _ in 0..300 {
+                    orbital_simulate_step(&mut state, 0., 0., self.playback_speed);
+                    positions.push(state.pos);
+                    target_positions.push(state.target_pos);
+                }
+                render_path(&positions, Color32::from_rgb(63, 63, 191));
+                render_path(&target_positions, Color32::from_rgb(191, 63, 191));
+            } else {
                 let shortest_idx = self
                     .orbital_model
                     .after_optim
@@ -116,11 +133,6 @@ impl OrbitalApp {
                     })
                     .map(|(i, _)| i);
 
-                let render_path = |poses: &[Vec2<f64>], color: Color32| {
-                    let pos = poses.iter().map(|x| to_pos2(*x)).collect();
-                    let path = PathShape::line(pos, (2., color));
-                    painter.add(path);
-                };
                 render_path(
                     &self
                         .orbital_model
@@ -291,9 +303,10 @@ impl OrbitalApp {
                 self.v_thrust = 0.;
                 for key in input.keys_down.iter() {
                     match key {
-                        egui::Key::A => self.h_thrust = -crate::missile::MAX_THRUST,
-                        egui::Key::D => self.h_thrust = crate::missile::MAX_THRUST,
-                        egui::Key::W => self.v_thrust = crate::missile::MAX_THRUST,
+                        egui::Key::A => self.h_thrust = -1.,
+                        egui::Key::D => self.h_thrust = 1.,
+                        egui::Key::S => self.v_thrust = -1.,
+                        egui::Key::W => self.v_thrust = 1.,
                         _ => {}
                     }
                 }
