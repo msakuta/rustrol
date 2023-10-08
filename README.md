@@ -38,6 +38,14 @@ However, it is very easy to define a loss function as the minimum distance betwe
 ![screencapture_missile](images/screencapture_missile.gif)
 
 
+### Orbital mechanics
+
+An orbital rocket simulation.
+The optimizer can adjust the initial velocity to randezvous with the target object in another orbit.
+It is a tricky problem since moving one way will not bring you to the desired direction at the destination.
+
+![screencapture_orbital](images/screencapture_orbital.gif)
+
 ## Control
 
 Clicking on the canvas will start the lander vehicle from clicked position.
