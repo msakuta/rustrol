@@ -6,7 +6,7 @@ use eframe::{
 
 use crate::{
     orbital::{
-        orbital_simulate_step, simulate_orbital, OrbitalParams, OrbitalResult, OrbitalState,
+        orbital_simulate_step, simulate_orbital, OrbitalParams, OrbitalResult, OrbitalState, GM,
         ORBITAL_STATE,
     },
     vec2::Vec2,
@@ -36,8 +36,7 @@ impl OrbitalApp {
     pub fn new() -> Self {
         let orbital_params = OrbitalParams::default();
         let orbital_state = ORBITAL_STATE;
-        let (orbital_model, error_msg) = match simulate_orbital(orbital_state.pos, &orbital_params)
-        {
+        let (orbital_model, error_msg) = match simulate_orbital(&orbital_params) {
             Ok(res) => (res, None),
             Err(e) => (Default::default(), Some(e.to_string())),
         };
@@ -100,7 +99,7 @@ impl OrbitalApp {
 
             if response.clicked() {
                 if let Some(mouse_pos) = response.interact_pointer_pos() {
-                    self.try_simulate_missile(from_pos2(mouse_pos), DEFAULT_ORIENTATION);
+                    self.try_simulate_missile(from_pos2(mouse_pos), ORBITAL_STATE.velo);
                 }
             }
 
@@ -225,25 +224,31 @@ impl OrbitalApp {
             {
                 render_orbit(orbital_state);
             } else {
-                // if self.randomize {
-                //     let x = 30. * (self.rng.next() - 0.5);
-                //     let y = 30. * (self.rng.next() - 0.5);
-                //     let orientation = 2. * std::f64::consts::PI * (self.rng.next() - 0.5);
-                //     println!("randomize x: {x}, y: {y}, orientation: {orientation}");
-                //     self.try_simulate_missile(Vec2 { x, y }, orientation);
-                // }
+                if self.randomize {
+                    let r = 3. * (self.rng.next() + 0.5);
+                    let angle = self.rng.next() * 2. * std::f64::consts::PI;
+                    let x = r * angle.cos();
+                    let y = r * angle.sin();
+                    let orientation = 2. * std::f64::consts::PI * (self.rng.next() - 0.5);
+                    println!("randomize x: {x}, y: {y}, orientation: {orientation}");
+                    self.try_simulate_missile(
+                        Vec2 { x, y },
+                        Vec2 { x: -y, y: x } / r * (GM / r).sqrt(),
+                    );
+                }
                 self.t = 0.;
             }
         });
     }
 
-    fn try_simulate_missile(&mut self, pos: Vec2<f64>, heading: f64) {
+    fn try_simulate_missile(&mut self, pos: Vec2<f64>, velo: Vec2<f64>) {
         if self.direct_control {
             self.orbital_state.pos = pos;
-            self.orbital_state.velo = ORBITAL_STATE.velo;
+            self.orbital_state.velo = velo;
         } else {
-            self.orbital_state.pos = pos;
-            match simulate_orbital(pos, &self.orbital_params) {
+            self.orbital_params.initial_pos = pos;
+            self.orbital_params.initial_velo = velo;
+            match simulate_orbital(&self.orbital_params) {
                 Ok(res) => self.orbital_model = res,
                 Err(e) => self.error_msg = Some(e.to_string()),
             }
@@ -255,7 +260,7 @@ impl OrbitalApp {
         ui.checkbox(&mut self.direct_control, "direct_control");
         if ui.button("Reset").clicked() {
             self.orbital_state = ORBITAL_STATE;
-            self.try_simulate_missile(self.orbital_state.pos, DEFAULT_ORIENTATION);
+            self.try_simulate_missile(self.orbital_state.pos, self.orbital_state.velo);
             self.t = 0.;
         }
         ui.checkbox(&mut self.paused, "Paused");

@@ -4,6 +4,8 @@ use rustograd::{Tape, TapeTerm};
 const RATE: f64 = 3e-4;
 
 pub struct OrbitalParams {
+    pub initial_pos: Vec2<f64>,
+    pub initial_velo: Vec2<f64>,
     pub rate: f64,
     pub optim_iter: usize,
     pub max_iter: usize,
@@ -12,6 +14,8 @@ pub struct OrbitalParams {
 impl Default for OrbitalParams {
     fn default() -> Self {
         Self {
+            initial_pos: Vec2 { x: 2., y: 0. },
+            initial_velo: Vec2 { x: 0., y: 0.15 },
             rate: RATE,
             optim_iter: 60,
             max_iter: 100,
@@ -37,12 +41,9 @@ pub struct OrbitalResult {
     pub after_optim: Vec<OrbitalState>,
 }
 
-pub fn simulate_orbital(
-    pos: Vec2<f64>,
-    params: &OrbitalParams,
-) -> Result<OrbitalResult, GradDoesNotExist> {
+pub fn simulate_orbital(params: &OrbitalParams) -> Result<OrbitalResult, GradDoesNotExist> {
     let tape = Tape::new();
-    let model = get_model(&tape, pos, params);
+    let model = get_model(&tape, params);
 
     let last_state = model.states.last().unwrap();
 
@@ -142,7 +143,7 @@ pub fn orbital_simulate_step(
 }
 
 const EARTH_POS: Vec2<f64> = Vec2 { x: 0., y: 0. };
-const GM: f64 = 0.03;
+pub const GM: f64 = 0.03;
 
 struct ModelState<'a> {
     accel: Vec2<TapeTerm<'a>>,
@@ -156,14 +157,14 @@ struct Model<'a> {
     loss: TapeTerm<'a>,
 }
 
-fn get_model<'a>(tape: &'a Tape<f64>, initial_pos: Vec2<f64>, params: &OrbitalParams) -> Model<'a> {
+fn get_model<'a>(tape: &'a Tape<f64>, params: &OrbitalParams) -> Model<'a> {
     let mut pos = Vec2 {
-        x: tape.term("x", initial_pos.x),
-        y: tape.term("y", initial_pos.y),
+        x: tape.term("x", params.initial_pos.x),
+        y: tape.term("y", params.initial_pos.y),
     };
     let mut velo = Vec2 {
-        x: tape.term("vx", 0.),
-        y: tape.term("vy", 0.1),
+        x: tape.term("vx", params.initial_velo.x),
+        y: tape.term("vy", params.initial_velo.y),
     };
     let mut target_pos = Vec2 {
         x: tape.term("target_x", 0.),
