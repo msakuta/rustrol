@@ -6,6 +6,8 @@ const RATE: f64 = 3e-4;
 pub struct OrbitalParams {
     pub initial_pos: Vec2<f64>,
     pub initial_velo: Vec2<f64>,
+    /// Whether to optimize the relative velocity to 0. It is not generally possible with just the initial velocity.
+    pub optim_velo: bool,
     pub rate: f64,
     pub optim_iter: usize,
     pub max_iter: usize,
@@ -16,6 +18,7 @@ impl Default for OrbitalParams {
         Self {
             initial_pos: Vec2 { x: 2., y: 0. },
             initial_velo: Vec2 { x: 0., y: 0.15 },
+            optim_velo: false,
             rate: RATE,
             optim_iter: 60,
             max_iter: 100,
@@ -150,6 +153,7 @@ struct ModelState<'a> {
     pos: Vec2<TapeTerm<'a>>,
     velo: Vec2<TapeTerm<'a>>,
     target_pos: Vec2<TapeTerm<'a>>,
+    target_velo: Vec2<TapeTerm<'a>>,
 }
 
 struct Model<'a> {
@@ -187,6 +191,7 @@ fn get_model<'a>(tape: &'a Tape<f64>, params: &OrbitalParams) -> Model<'a> {
         pos,
         velo,
         target_pos,
+        target_velo,
     }];
 
     let simulate_step = |pos, vx| {
@@ -209,6 +214,7 @@ fn get_model<'a>(tape: &'a Tape<f64>, params: &OrbitalParams) -> Model<'a> {
             pos,
             velo,
             target_pos,
+            target_velo,
         });
     }
 
@@ -216,7 +222,11 @@ fn get_model<'a>(tape: &'a Tape<f64>, params: &OrbitalParams) -> Model<'a> {
         .iter()
         .fold(None, |acc: Option<TapeTerm<'a>>, state| {
             let diff = state.pos - state.target_pos;
-            let loss = diff.x * diff.x + diff.y * diff.y;
+            let velo_diff = state.velo - state.target_velo;
+            let mut loss = diff.length2();
+            if params.optim_velo {
+                loss = loss + velo_diff.length2();
+            }
             if let Some(acc) = acc {
                 Some(acc.apply_bin(loss, Box::new(MinOp)))
             } else {

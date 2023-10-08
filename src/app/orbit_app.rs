@@ -1,7 +1,7 @@
 use eframe::{
     egui::{self, Context, Frame, Ui},
     emath::Align2,
-    epaint::{pos2, vec2, Color32, FontId, PathShape, Pos2, Rect},
+    epaint::{pos2, Color32, FontId, PathShape, Pos2, Rect},
 };
 
 use crate::{
@@ -14,8 +14,6 @@ use crate::{
 };
 
 const SCALE: f32 = 50.;
-
-const DEFAULT_ORIENTATION: f64 = std::f64::consts::PI / 4.;
 
 pub struct OrbitalApp {
     direct_control: bool,
@@ -76,8 +74,6 @@ impl OrbitalApp {
                     canvas_offset_y - pos.y as f32 * SCALE,
                 ))
             };
-
-            let to_vec2 = |pos: Vec2<f64>| vec2(pos.x as f32 * SCALE, -pos.y as f32 * SCALE);
 
             let from_pos2 = |pos: Pos2| {
                 let model_pos = from_screen.transform_pos(pos);
@@ -285,6 +281,7 @@ impl OrbitalApp {
             &mut self.orbital_params.rate,
             1e-4..=1e-3,
         ));
+        ui.checkbox(&mut self.orbital_params.optim_velo, "Optimize velocity");
     }
 
     pub fn update(&mut self, ctx: &Context) {

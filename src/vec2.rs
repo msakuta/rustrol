@@ -17,11 +17,16 @@ impl<T: Copy> Vec2<T> {
     }
 }
 
-impl Vec2<f64> {
-    pub fn length2(&self) -> f64 {
+impl<T> Vec2<T>
+where
+    T: Add<T, Output = T> + Mul<T, Output = T> + Clone + Copy,
+{
+    pub fn length2(&self) -> T {
         self.x * self.x + self.y * self.y
     }
+}
 
+impl Vec2<f64> {
     pub fn length(&self) -> f64 {
         self.length2().sqrt()
     }

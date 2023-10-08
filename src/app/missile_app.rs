@@ -1,7 +1,7 @@
 use eframe::{
     egui::{self, Context, Frame, Ui},
     emath::Align2,
-    epaint::{pos2, vec2, Color32, FontId, PathShape, Pos2, Rect},
+    epaint::{pos2, Color32, FontId, PathShape, Pos2, Rect},
 };
 
 use crate::{
@@ -82,8 +82,6 @@ impl MissileApp {
                     canvas_offset_y - pos.y as f32 * SCALE,
                 ))
             };
-
-            let to_vec2 = |pos: Vec2<f64>| vec2(pos.x as f32 * SCALE, -pos.y as f32 * SCALE);
 
             let from_pos2 = |pos: Pos2| {
                 let model_pos = from_screen.transform_pos(pos);
