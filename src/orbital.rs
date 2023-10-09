@@ -112,8 +112,8 @@ pub fn simulate_orbital(
     }
 
     if let Some(best) = best {
-        first_state.velo.x.set(best.0.x);
-        first_state.velo.y.set(best.0.y);
+        first_state.velo.x.set(best.0.x).unwrap();
+        first_state.velo.y.set(best.0.y).unwrap();
 
         Ok(OrbitalResult {
             before_optim,
@@ -147,7 +147,7 @@ fn optimize<'a>(
     let mut loss_val = 0.;
 
     // optimization loop
-    for i in 0..params.optim_iter {
+    for _i in 0..params.optim_iter {
         model.loss.eval();
         model.loss.backprop().unwrap();
         let xd = try_grad!(first_state.velo.x);
