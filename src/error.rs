@@ -27,6 +27,8 @@ impl std::fmt::Display for GradDoesNotExist {
     }
 }
 
+impl std::error::Error for GradDoesNotExist {}
+
 /// A macro that attempts to get a gradient of a term, or raise GradDoesNotExist error
 macro_rules! try_grad {
     ($term:expr) => {

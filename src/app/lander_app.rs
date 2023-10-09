@@ -238,7 +238,7 @@ impl LanderApp {
         ui.label("Descent rate:");
         ui.add(egui::widgets::Slider::new(
             &mut self.lander_params.rate,
-            1e-4..=1e-3,
+            1e-5..=1e-3,
         ));
     }
 

@@ -79,6 +79,7 @@ pub(crate) fn simulate_lander(
 const MAX_THRUST: f64 = 0.11;
 const RATE: f64 = 1e-4;
 const GM: f64 = 0.06;
+const HEADING_WEIGHT: f64 = 10.;
 
 fn optimize(
     model: &Model,
@@ -172,7 +173,7 @@ pub fn lander_simulate_step(
     let thrust_vec = Vec2::<f64> {
         x: -heading.sin() * v_thrust,
         y: heading.cos() * v_thrust,
-    };
+    } * MAX_THRUST;
     let velo = lander_state.velo;
     // let velolen2 = velo.x * velo.x + velo.y * velo.y;
     // let velolen12 = velolen2.sqrt();
@@ -180,7 +181,7 @@ pub fn lander_simulate_step(
     //     x: rng.next() - 0.5,
     //     y: rng.next() - 0.5,
     // };
-    let next_heading = heading + h_thrust * delta_time;
+    let next_heading = heading + h_thrust * MAX_THRUST * delta_time;
     let accel = Vec2::<f64> { x: 0., y: -GM } + /*randomize * 0.02 +*/ thrust_vec;
     let delta_x2 = velo + accel * 0.5 * delta_time;
     let oldpos = lander_state.pos;
@@ -270,6 +271,7 @@ fn get_model<'a>(tape: &'a Tape<f64>, initial_pos: Vec2<f64>) -> Model<'a> {
         zero: tape.term("0.0", 0.0),
         half: tape.term("0.5", 0.5),
     };
+    let heading_weight = tape.term("heading_weight", HEADING_WEIGHT);
 
     let mut lander1 = lander;
     let mut hist1 = vec![lander1];
@@ -296,7 +298,7 @@ fn get_model<'a>(tape: &'a Tape<f64>, initial_pos: Vec2<f64>) -> Model<'a> {
             .fold(None, |acc, cur| {
                 let loss = (cur.velo.x * cur.velo.x + cur.velo.y * cur.velo.y)
                     / (-cur.pos.y).apply("exp", f64::exp, f64::exp)
-                    + cur.heading * cur.heading;
+                    + cur.heading * cur.heading * heading_weight;
                 if let Some(acc) = acc {
                     Some(acc + loss)
                 } else {

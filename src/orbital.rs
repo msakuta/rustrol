@@ -47,7 +47,9 @@ pub struct OrbitalResult {
     pub after_optim: Vec<OrbitalState>,
 }
 
-pub fn simulate_orbital(params: &OrbitalParams) -> Result<OrbitalResult, GradDoesNotExist> {
+pub fn simulate_orbital(
+    params: &OrbitalParams,
+) -> Result<OrbitalResult, Box<dyn std::error::Error>> {
     let tape = Tape::new();
     let model = get_model(&tape, params);
 
@@ -90,7 +92,59 @@ pub fn simulate_orbital(params: &OrbitalParams) -> Result<OrbitalResult, GradDoe
         })
         .collect();
 
+    let mut best: Option<(Vec2<f64>, f64)> = None;
+    let velocity_magnitude = params.initial_velo.length();
+    for grid_y in -2..2 {
+        for grid_x in -2..2 {
+            let velo = Vec2 {
+                x: grid_x as f64 * velocity_magnitude * 0.5 + params.initial_velo.x,
+                y: grid_y as f64 * velocity_magnitude * 0.5 + params.initial_velo.y,
+            };
+            let loss = optimize(&model, &velo, params)?;
+            if let Some(best_val) = best {
+                if loss.1 < best_val.1 {
+                    best = Some(loss);
+                }
+            } else {
+                best = Some(loss);
+            }
+        }
+    }
+
+    if let Some(best) = best {
+        first_state.velo.x.set(best.0.x);
+        first_state.velo.y.set(best.0.y);
+
+        Ok(OrbitalResult {
+            before_optim,
+            after_optim: model
+                .states
+                .iter()
+                .map(|state| OrbitalState {
+                    pos: state.pos.map(|x| x.eval()),
+                    velo: state.velo.map(|x| x.eval()),
+                    target_pos: state.target_pos.map(|x| x.eval_noclear()),
+                    target_velo: state.target_velo.map(|x| x.eval_noclear()),
+                })
+                .collect(),
+        })
+    } else {
+        Err(format!("Optimization did not converge!").into())
+    }
+}
+
+fn optimize<'a>(
+    model: &'a Model,
+    velo: &Vec2<f64>,
+    params: &OrbitalParams,
+) -> Result<(Vec2<f64>, f64), GradDoesNotExist> {
     const RATE: f64 = 1e-5;
+
+    let first_state = model.states.first().unwrap();
+    first_state.velo.x.set(velo.x).unwrap();
+    first_state.velo.y.set(velo.y).unwrap();
+
+    let mut loss_val = 0.;
 
     // optimization loop
     for i in 0..params.optim_iter {
@@ -107,26 +161,19 @@ pub fn simulate_orbital(params: &OrbitalParams) -> Result<OrbitalResult, GradDoe
             .y
             .set(first_velo.y.data().unwrap() - yd * RATE)
             .unwrap();
-        let loss_val = model.loss.eval();
-        println!(
-            "simulate_orbital optimize[{i}]: derive(vx, vy): {:?}, {:?}, loss: {}",
-            xd, yd, loss_val
-        );
+        loss_val = model.loss.eval();
+        // println!(
+        //     "simulate_orbital optimize[{i}]: derive(vx, vy): {:?}, {:?}, loss: {}",
+        //     xd, yd, loss_val
+        // );
     }
 
-    Ok(OrbitalResult {
-        before_optim,
-        after_optim: model
-            .states
-            .iter()
-            .map(|state| OrbitalState {
-                pos: state.pos.map(|x| x.eval()),
-                velo: state.velo.map(|x| x.eval()),
-                target_pos: state.target_pos.map(|x| x.eval_noclear()),
-                target_velo: state.target_velo.map(|x| x.eval_noclear()),
-            })
-            .collect(),
-    })
+    let optimized_velo = Vec2 {
+        x: first_state.velo.x.data().unwrap(),
+        y: first_state.velo.y.data().unwrap(),
+    };
+
+    Ok((optimized_velo, loss_val))
 }
 
 const THRUST_ACCEL: f64 = 0.001;
