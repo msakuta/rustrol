@@ -97,7 +97,7 @@ impl OrbitalApp {
 
             if response.clicked() {
                 if let Some(mouse_pos) = response.interact_pointer_pos() {
-                    self.set_simulation(from_pos2(mouse_pos), ORBITAL_STATE.velo);
+                    self.set_simulation(from_pos2(mouse_pos));
                 }
             }
 
@@ -262,9 +262,7 @@ impl OrbitalApp {
                     let angle = self.rng.next() * 2. * std::f64::consts::PI;
                     let x = r * angle.cos();
                     let y = r * angle.sin();
-                    let orientation = 2. * std::f64::consts::PI * (self.rng.next() - 0.5);
-                    println!("randomize x: {x}, y: {y}, orientation: {orientation}");
-                    self.set_simulation(Vec2 { x, y }, Vec2 { x: -y, y: x } / r * (GM / r).sqrt());
+                    self.set_simulation(Vec2 { x, y });
                 }
                 self.t = 0.;
             }
@@ -279,7 +277,12 @@ impl OrbitalApp {
         self.t = 0.;
     }
 
-    fn set_simulation(&mut self, pos: Vec2<f64>, velo: Vec2<f64>) {
+    fn set_simulation(&mut self, pos: Vec2<f64>) {
+        let x = pos.x;
+        let y = pos.y;
+        let r = (x * x + y * y).sqrt();
+        let velo = Vec2 { x: -y, y: x } / r * (GM / r).sqrt();
+
         if self.direct_control {
             self.orbital_state.pos = pos;
             self.orbital_state.velo = velo;
