@@ -97,7 +97,7 @@ impl OrbitalApp {
 
             if response.clicked() {
                 if let Some(mouse_pos) = response.interact_pointer_pos() {
-                    self.try_simulate_missile(from_pos2(mouse_pos), ORBITAL_STATE.velo);
+                    self.set_simulation(from_pos2(mouse_pos), ORBITAL_STATE.velo);
                 }
             }
 
@@ -264,17 +264,22 @@ impl OrbitalApp {
                     let y = r * angle.sin();
                     let orientation = 2. * std::f64::consts::PI * (self.rng.next() - 0.5);
                     println!("randomize x: {x}, y: {y}, orientation: {orientation}");
-                    self.try_simulate_missile(
-                        Vec2 { x, y },
-                        Vec2 { x: -y, y: x } / r * (GM / r).sqrt(),
-                    );
+                    self.set_simulation(Vec2 { x, y }, Vec2 { x: -y, y: x } / r * (GM / r).sqrt());
                 }
                 self.t = 0.;
             }
         });
     }
 
-    fn try_simulate_missile(&mut self, pos: Vec2<f64>, velo: Vec2<f64>) {
+    fn try_simulate(&mut self) {
+        match simulate_orbital(&self.orbital_params) {
+            Ok(res) => self.orbital_model = res,
+            Err(e) => self.error_msg = Some(e.to_string()),
+        }
+        self.t = 0.;
+    }
+
+    fn set_simulation(&mut self, pos: Vec2<f64>, velo: Vec2<f64>) {
         if self.direct_control {
             self.orbital_state.pos = pos;
             self.orbital_state.velo = velo;
@@ -286,14 +291,17 @@ impl OrbitalApp {
                 Err(e) => self.error_msg = Some(e.to_string()),
             }
         }
-        self.t = 0.;
+        self.try_simulate();
     }
 
     pub fn update_panel(&mut self, ui: &mut Ui) {
         ui.checkbox(&mut self.direct_control, "direct_control");
         if ui.button("Reset").clicked() {
-            self.orbital_state = ORBITAL_STATE;
-            self.try_simulate_missile(self.orbital_state.pos, self.orbital_state.velo);
+            if self.direct_control {
+                self.orbital_state = ORBITAL_STATE;
+            } else {
+                self.try_simulate();
+            }
             self.t = 0.;
         }
         ui.checkbox(&mut self.paused, "Paused");
@@ -319,6 +327,11 @@ impl OrbitalApp {
             1e-4..=1e-3,
         ));
         ui.checkbox(&mut self.orbital_params.optim_velo, "Optimize velocity");
+        ui.label("Velocity weight:");
+        ui.add(egui::widgets::Slider::new(
+            &mut self.orbital_params.initial_velo_weight,
+            (0.)..=10.,
+        ));
         ui.label("Prediction horizon:");
         ui.add(egui::widgets::Slider::new(
             &mut self.prediction_horizon,

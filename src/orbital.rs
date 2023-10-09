@@ -8,6 +8,8 @@ pub struct OrbitalParams {
     pub initial_velo: Vec2<f64>,
     /// Whether to optimize the relative velocity to 0. It is not generally possible with just the initial velocity.
     pub optim_velo: bool,
+    /// The weight on loss function from deviation from the initial velocity.
+    pub initial_velo_weight: f64,
     pub rate: f64,
     pub optim_iter: usize,
     pub max_iter: usize,
@@ -19,6 +21,7 @@ impl Default for OrbitalParams {
             initial_pos: Vec2 { x: 2., y: 0. },
             initial_velo: Vec2 { x: 0., y: 0.15 },
             optim_velo: false,
+            initial_velo_weight: 1.,
             rate: RATE,
             optim_iter: 60,
             max_iter: 100,
@@ -173,7 +176,12 @@ fn optimize<'a>(
         y: first_state.velo.y.data().unwrap(),
     };
 
-    Ok((optimized_velo, loss_val))
+    let velo_loss = (params.initial_velo - optimized_velo).length2();
+
+    Ok((
+        optimized_velo,
+        loss_val + velo_loss * params.initial_velo_weight,
+    ))
 }
 
 const THRUST_ACCEL: f64 = 0.001;
