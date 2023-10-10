@@ -6,8 +6,8 @@ use eframe::{
 
 use crate::{
     orbital::{
-        orbital_simulate_step, simulate_orbital, OrbitalParams, OrbitalResult, OrbitalState, GM,
-        ORBITAL_STATE,
+        calc_initial_moon, orbital_simulate_step, simulate_orbital, OrbitalBody, OrbitalParams,
+        OrbitalResult, OrbitalState, GM, ORBITAL_STATE,
     },
     vec2::Vec2,
     xor128::Xor128,
@@ -32,9 +32,8 @@ pub struct OrbitalApp {
 }
 
 impl OrbitalApp {
-    pub fn new() -> Self {
-        let orbital_params = OrbitalParams::default();
-        let orbital_state = ORBITAL_STATE;
+    pub fn new(use_moon: bool) -> Self {
+        let (orbital_state, orbital_params) = Self::init_state(use_moon, OrbitalParams::default());
         let (orbital_model, error_msg) = match simulate_orbital(&orbital_params) {
             Ok(res) => (res, None),
             Err(e) => (Default::default(), Some(e.to_string())),
@@ -54,6 +53,23 @@ impl OrbitalApp {
             v_thrust: 0.,
             error_msg,
         }
+    }
+
+    fn init_state(
+        use_moon: bool,
+        mut orbital_params: OrbitalParams,
+    ) -> (OrbitalState, OrbitalParams) {
+        let mut orbital_state = ORBITAL_STATE;
+        if !use_moon {
+            orbital_params.moon_pos = None;
+        } else {
+            orbital_params.grid_search_size = 1;
+            orbital_params.max_iter *= 2;
+            // orbital_params.earth_gm *= 0.5;
+            // orbital_params.moon_gm *= 0.5;
+            orbital_state.moon = calc_initial_moon(&orbital_params);
+        }
+        (orbital_state, orbital_params)
     }
 
     pub fn paint_graph(&mut self, ui: &mut Ui) {
@@ -114,15 +130,15 @@ impl OrbitalApp {
                 let mut closest = None;
                 for _ in 0..self.prediction_horizon {
                     orbital_simulate_step(&mut state, 0., 0., 1.);
-                    let dist2 = (state.pos - state.target_pos).length2();
+                    let dist2 = (state.satellite.pos - state.target.pos).length2();
                     if closest
                         .map(|closest: (f64, Vec2<f64>, Vec2<f64>)| dist2 < closest.0)
                         .unwrap_or(true)
                     {
-                        closest = Some((dist2, state.pos, state.target_pos));
+                        closest = Some((dist2, state.satellite.pos, state.target.pos));
                     }
-                    positions.push(state.pos);
-                    target_positions.push(state.target_pos);
+                    positions.push(state.satellite.pos);
+                    target_positions.push(state.target.pos);
                 }
                 render_path(&positions, Color32::from_rgb(63, 63, 191));
                 render_path(&target_positions, Color32::from_rgb(191, 63, 191));
@@ -148,7 +164,7 @@ impl OrbitalApp {
                     .iter()
                     .enumerate()
                     .fold(None, |acc: Option<(usize, f64)>, cur| {
-                        let diff = cur.1.pos - cur.1.target_pos;
+                        let diff = cur.1.satellite.pos - cur.1.target.pos;
                         let dist = diff.x * diff.x + diff.y * diff.y;
                         if let Some(acc) = acc {
                             Some(if acc.1 < dist { acc } else { (cur.0, dist) })
@@ -163,7 +179,7 @@ impl OrbitalApp {
                         .orbital_model
                         .before_optim
                         .iter()
-                        .map(|x| x.pos)
+                        .map(|x| x.satellite.pos)
                         .collect::<Vec<_>>(),
                     Color32::from_rgb(63, 63, 191),
                 );
@@ -172,7 +188,7 @@ impl OrbitalApp {
                         .orbital_model
                         .after_optim
                         .iter()
-                        .map(|x| x.pos)
+                        .map(|x| x.satellite.pos)
                         .collect::<Vec<_>>(),
                     Color32::from_rgb(191, 191, 191),
                 );
@@ -181,20 +197,20 @@ impl OrbitalApp {
                         .orbital_model
                         .before_optim
                         .iter()
-                        .map(|x| x.target_pos)
+                        .map(|x| x.target.pos)
                         .collect::<Vec<_>>(),
                     Color32::from_rgb(191, 63, 191),
                 );
 
                 if let Some(idx) = shortest_idx {
                     painter.circle(
-                        to_pos2(self.orbital_model.after_optim[idx].pos),
+                        to_pos2(self.orbital_model.after_optim[idx].satellite.pos),
                         3.,
                         Color32::from_rgb(191, 191, 191),
                         (1., Color32::BLACK),
                     );
                     painter.circle(
-                        to_pos2(self.orbital_model.after_optim[idx].target_pos),
+                        to_pos2(self.orbital_model.after_optim[idx].target.pos),
                         3.,
                         Color32::from_rgb(191, 63, 191),
                         (1., Color32::BLACK),
@@ -203,7 +219,7 @@ impl OrbitalApp {
             }
 
             let render_orbit = |orbital_state: &OrbitalState| {
-                let missile_pos = to_pos2(orbital_state.pos).to_vec2();
+                let missile_pos = to_pos2(orbital_state.satellite.pos).to_vec2();
                 let convert_to_poly = |vertices: &[[f32; 2]]| {
                     PathShape::convex_polygon(
                         vertices
@@ -237,14 +253,14 @@ impl OrbitalApp {
                 ]));
 
                 painter.circle(
-                    to_pos2(Vec2 { x: 0., y: 0. }),
+                    to_pos2(self.orbital_params.earth_pos),
                     10.,
                     Color32::WHITE,
                     (1., Color32::BLACK),
                 );
 
                 painter.circle(
-                    to_pos2(orbital_state.target_pos),
+                    to_pos2(orbital_state.target.pos),
                     5.,
                     Color32::GREEN,
                     (1., Color32::YELLOW),
@@ -253,9 +269,23 @@ impl OrbitalApp {
 
             if self.direct_control {
                 render_orbit(&self.orbital_state);
+
+                if let Some(moon) = self.orbital_state.moon {
+                    painter.circle(to_pos2(moon.pos), 5., Color32::WHITE, (1., Color32::BLACK));
+                }
             } else if let Some(orbital_state) = self.orbital_model.after_optim.get(self.t as usize)
             {
                 render_orbit(orbital_state);
+
+                if let Some(moon_pos) = self
+                    .orbital_model
+                    .after_optim
+                    .get(self.t as usize)
+                    .and_then(|state| state.moon)
+                    .map(|moon| moon.pos)
+                {
+                    painter.circle(to_pos2(moon_pos), 5., Color32::WHITE, (1., Color32::BLACK));
+                }
             } else {
                 if self.randomize {
                     let r = 3. * (self.rng.next() + 0.5);
@@ -284,8 +314,8 @@ impl OrbitalApp {
         let velo = Vec2 { x: -y, y: x } / r * (GM / r).sqrt();
 
         if self.direct_control {
-            self.orbital_state.pos = pos;
-            self.orbital_state.velo = velo;
+            self.orbital_state.satellite.pos = pos;
+            self.orbital_state.satellite.velo = velo;
         } else {
             self.orbital_params.initial_pos = pos;
             self.orbital_params.initial_velo = velo;
@@ -301,7 +331,8 @@ impl OrbitalApp {
         ui.checkbox(&mut self.direct_control, "direct_control");
         if ui.button("Reset").clicked() {
             if self.direct_control {
-                self.orbital_state = ORBITAL_STATE;
+                (self.orbital_state, self.orbital_params) =
+                    Self::init_state(self.orbital_params.moon_pos.is_some(), self.orbital_params);
             } else {
                 self.try_simulate();
             }

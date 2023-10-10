@@ -8,6 +8,12 @@ pub struct Vec2<T> {
     pub y: T,
 }
 
+impl<T> Vec2<T> {
+    pub fn new(x: T, y: T) -> Self {
+        Self { x, y }
+    }
+}
+
 impl<T: Copy> Vec2<T> {
     pub fn map<U>(&self, f: impl Fn(T) -> U) -> Vec2<U> {
         Vec2 {
@@ -24,11 +30,44 @@ where
     pub fn length2(&self) -> T {
         self.x * self.x + self.y * self.y
     }
+
+    pub fn dot(&self, rhs: Self) -> T {
+        self.x * rhs.x + self.y * rhs.y
+    }
+}
+
+impl<T> Vec2<T>
+where
+    T: Neg<Output = T> + Clone + Copy,
+{
+    /// Return a copy of the vector with 90 degrees rotated to the left.
+    /// It only makes sense in 2D.
+    pub fn left90(&self) -> Self {
+        Self {
+            x: -self.y,
+            y: self.x,
+        }
+    }
 }
 
 impl Vec2<f64> {
     pub fn length(&self) -> f64 {
         self.length2().sqrt()
+    }
+
+    pub fn normalized(&self) -> Self {
+        let len = self.length();
+        if len.is_subnormal() {
+            Self {
+                x: self.x,
+                y: self.y,
+            }
+        } else {
+            Self {
+                x: self.x / len,
+                y: self.y / len,
+            }
+        }
     }
 
     pub fn zero() -> Self {
