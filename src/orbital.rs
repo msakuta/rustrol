@@ -413,15 +413,10 @@ fn get_moon_model<'a>(
 pub fn calc_initial_moon(params: &OrbitalParams) -> Option<OrbitalBody> {
     let moon_delta = params.moon_pos? - params.earth_pos;
     let moon_r = moon_delta.length();
-    let moon_phase = moon_delta.y.atan2(moon_delta.x);
-    let period = 2. * std::f64::consts::PI * (moon_r.powi(3) / params.earth_gm).sqrt();
-    let omega = 2. * std::f64::consts::PI / period;
+    let velo = moon_delta.left90() / moon_r * (GM / moon_r).sqrt();
     Some(OrbitalBody {
-        pos: Vec2::new(
-            params.earth_pos.x + moon_r * moon_phase.cos(),
-            params.earth_pos.y + moon_r * moon_phase.sin(),
-        ),
-        velo: Vec2::new(moon_phase.cos(), moon_phase.sin()).left90() * omega,
+        pos: params.moon_pos?,
+        velo,
     })
 }
 
