@@ -1,5 +1,10 @@
 use eframe::{
-    egui::{self, Context, Frame, Ui},
+    egui::{
+        self,
+        plot::{Legend, Line, PlotPoints},
+        widgets::plot::Plot,
+        Context, Frame, Ui,
+    },
     emath::Align2,
     epaint::{pos2, Color32, FontId, PathShape, Pos2, Rect},
 };
@@ -402,5 +407,30 @@ impl OrbitalApp {
         if !self.paused {
             self.t += self.playback_speed;
         }
+    }
+
+    fn loss_history(&self) -> Line {
+        let points: PlotPoints = self
+            .orbital_model
+            .after_optim
+            .iter()
+            .enumerate()
+            .filter_map(|(i, val)| Some([i as f64, (val.moon?.pos - val.satellite.pos).length()]))
+            .collect();
+        Line::new(points)
+            .color(eframe::egui::Color32::from_rgb(100, 200, 100))
+            .name("Distance between the satellite and the Moon")
+    }
+
+    pub fn render_plot(&mut self, ctx: &Context) {
+        eframe::egui::TopBottomPanel::bottom("bottom")
+            .resizable(true)
+            .show(ctx, |ui| {
+                let plot = Plot::new("plot");
+                plot.legend(Legend::default()).show(ui, |plot_ui| {
+                    let hist = self.loss_history();
+                    plot_ui.line(hist);
+                })
+            });
     }
 }

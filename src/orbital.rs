@@ -339,22 +339,43 @@ fn get_model<'a>(tape: &'a Tape<f64>, params: &OrbitalParams) -> Model<'a> {
         });
     }
 
-    let loss = states
-        .iter()
-        .fold(None, |acc: Option<TapeTerm<'a>>, state| {
-            let diff = state.pos - state.target_pos;
-            let velo_diff = state.velo - state.target_velo;
-            let mut loss = diff.length2();
-            if params.optim_velo {
-                loss = loss + velo_diff.length2();
-            }
-            if let Some(acc) = acc {
-                Some(acc.apply_bin(loss, Box::new(MinOp)))
-            } else {
-                Some(loss)
-            }
-        })
-        .unwrap();
+    let loss = if let Some(moon) = moon {
+        println!("Moon distance: {:?}", moon.initial_r.eval_noclear());
+        states
+            .iter()
+            .zip(moon.states.iter())
+            .fold(None, |acc: Option<TapeTerm<'a>>, (state, moon_state)| {
+                let diff = state.pos - moon_state.pos;
+                let loss = diff
+                    .length2()
+                    .apply("sqrt", f64::sqrt, |x| -0.5 * x.powf(-0.5))
+                    - moon.initial_r;
+                let loss = loss * loss;
+                if let Some(acc) = acc {
+                    Some(acc.apply_bin(loss, Box::new(MinOp)))
+                } else {
+                    Some(loss)
+                }
+            })
+            .unwrap()
+    } else {
+        states
+            .iter()
+            .fold(None, |acc: Option<TapeTerm<'a>>, state| {
+                let diff = state.pos - state.target_pos;
+                let velo_diff = state.velo - state.target_velo;
+                let mut loss = diff.length2();
+                if params.optim_velo {
+                    loss = loss + velo_diff.length2();
+                }
+                if let Some(acc) = acc {
+                    Some(acc.apply_bin(loss, Box::new(MinOp)))
+                } else {
+                    Some(loss)
+                }
+            })
+            .unwrap()
+    };
 
     Model { states, loss }
 }
@@ -369,6 +390,7 @@ struct BodyState<'a> {
 struct BodyModel<'a> {
     states: Vec<BodyState<'a>>,
     gm: TapeTerm<'a>,
+    initial_r: TapeTerm<'a>,
 }
 
 fn get_moon_model<'a>(
@@ -406,6 +428,7 @@ fn get_moon_model<'a>(
     let moon_model = BodyModel {
         states: moon_states,
         gm: tape.term("GMm", params.moon_gm),
+        initial_r: tape.term("initial_r", 1.5),
     };
     (target_pos, target_velo, moon_model)
 }

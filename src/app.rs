@@ -86,6 +86,10 @@ impl eframe::App for RustrolApp {
                 });
             });
 
+        if let AppSelect::ThreeBody(ref mut app) = self.app {
+            app.render_plot(ctx);
+        }
+
         egui::CentralPanel::default()
             // .resizable(true)
             // .min_height(100.)
