@@ -282,6 +282,14 @@ impl OrbitalApp {
             {
                 render_orbit(orbital_state);
 
+                let moon_poses: Vec<_> = self
+                    .orbital_model
+                    .after_optim
+                    .iter()
+                    .filter_map(|state| state.moon.as_ref())
+                    .map(|moon| moon.pos)
+                    .collect();
+                render_path(&moon_poses, Color32::from_rgb(63, 63, 63));
                 if let Some(moon_pos) = self
                     .orbital_model
                     .after_optim
