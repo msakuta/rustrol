@@ -1,10 +1,14 @@
 mod lander_app;
 mod missile_app;
 mod orbit_app;
+mod three_body_app;
 
 use eframe::egui::{self, Context};
 
-use self::{lander_app::LanderApp, missile_app::MissileApp, orbit_app::OrbitalApp};
+use self::{
+    lander_app::LanderApp, missile_app::MissileApp, orbit_app::OrbitalApp,
+    three_body_app::ThreeBodyApp,
+};
 
 const SCALE: f32 = 10.;
 
@@ -15,12 +19,14 @@ enum AppRadio {
     Lander,
     Missile,
     Orbital,
+    ThreeBody,
 }
 
 pub enum AppSelect {
     Lander(LanderApp),
     Missile(MissileApp),
     Orbital(OrbitalApp),
+    ThreeBody(ThreeBodyApp),
 }
 
 pub struct RustrolApp {
@@ -55,12 +61,17 @@ impl eframe::App for RustrolApp {
                     || ui
                         .radio_value(&mut self.app_radio, AppRadio::Orbital, "Orbital")
                         .changed();
+                changed = changed
+                    || ui
+                        .radio_value(&mut self.app_radio, AppRadio::ThreeBody, "Three body")
+                        .changed();
 
                 if changed {
                     match self.app_radio {
                         AppRadio::Lander => self.app = AppSelect::Lander(LanderApp::new()),
                         AppRadio::Missile => self.app = AppSelect::Missile(MissileApp::new()),
                         AppRadio::Orbital => self.app = AppSelect::Orbital(OrbitalApp::new()),
+                        AppRadio::ThreeBody => self.app = AppSelect::ThreeBody(ThreeBodyApp::new()),
                     }
                 }
 
@@ -68,8 +79,13 @@ impl eframe::App for RustrolApp {
                     AppSelect::Lander(ref mut lander) => lander.update_panel(ui),
                     AppSelect::Missile(ref mut missile) => missile.update_panel(ui),
                     AppSelect::Orbital(ref mut app) => app.update_panel(ui),
+                    AppSelect::ThreeBody(ref mut app) => app.update_panel(ui),
                 });
             });
+
+        if let AppSelect::ThreeBody(ref mut app) = self.app {
+            app.render_plot(ctx);
+        }
 
         egui::CentralPanel::default()
             // .resizable(true)
@@ -78,12 +94,14 @@ impl eframe::App for RustrolApp {
                 AppSelect::Lander(ref mut lander) => lander.paint_graph(ui),
                 AppSelect::Missile(ref mut app) => app.paint_graph(ui),
                 AppSelect::Orbital(ref mut app) => app.paint_graph(ui),
+                AppSelect::ThreeBody(ref mut app) => app.paint_graph(ui),
             });
 
         match self.app {
             AppSelect::Lander(ref mut lander) => lander.update(ctx),
             AppSelect::Missile(ref mut app) => app.update(ctx),
             AppSelect::Orbital(ref mut app) => app.update(ctx),
+            AppSelect::ThreeBody(ref mut app) => app.update(ctx),
         }
     }
 }
