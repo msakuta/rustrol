@@ -5,11 +5,11 @@ pub use self::orbit::{
     orbital_simulate_step, simulate_orbital, OrbitalResult, OrbitalState, ORBITAL_STATE,
 };
 pub use self::three_body::{
-    calc_initial_moon, simulate_three_body, three_body_simulate_step, ThreeBodyResult,
-    ThreeBodyState, THREE_BODY_STATE,
+    calc_initial_moon, simulate_three_body, three_body_simulate_step, ThreeBodyParams,
+    ThreeBodyResult, ThreeBodyState, THREE_BODY_STATE,
 };
 use crate::{error::GradDoesNotExist, vec2::Vec2};
-use rustograd::{error::RustogradError, tape::TapeNode, Tape, TapeTerm};
+use rustograd::{error::RustogradError, TapeTerm};
 
 type Vec2d = Vec2<f64>;
 type Vec2t<'a> = Vec2<TapeTerm<'a>>;
@@ -19,7 +19,6 @@ const THRUST_ACCEL: f64 = 0.001;
 const EARTH_POS: Vec2<f64> = Vec2 { x: 0., y: 0. };
 pub const GM: f64 = 0.03;
 pub const GM_MOON: f64 = GM / 3.;
-const INIT_MOON_POS: Vec2<f64> = Vec2 { x: -3., y: 0. };
 
 #[derive(Clone, Copy)]
 pub struct OrbitalParams {
@@ -27,8 +26,7 @@ pub struct OrbitalParams {
     pub initial_velo: Vec2<f64>,
     pub earth_pos: Vec2<f64>,
     pub earth_gm: f64,
-    pub moon_pos: Option<Vec2<f64>>,
-    pub moon_gm: f64,
+    pub three_body: Option<ThreeBodyParams>,
     /// Whether to optimize the relative velocity to 0. It is not generally possible with just the initial velocity.
     pub optim_velo: bool,
     /// The weight on loss function from deviation from the initial velocity.
@@ -46,8 +44,7 @@ impl Default for OrbitalParams {
             initial_velo: Vec2 { x: 0., y: 0.15 },
             earth_pos: Vec2 { x: 0., y: 0. },
             earth_gm: GM,
-            moon_pos: Some(INIT_MOON_POS),
-            moon_gm: GM_MOON,
+            three_body: None,
             optim_velo: false,
             initial_velo_weight: 1.,
             grid_search_size: 2,
@@ -170,7 +167,7 @@ struct BodyState<'a> {
 struct BodyModel<'a> {
     states: Vec<BodyState<'a>>,
     gm: TapeTerm<'a>,
-    initial_r: TapeTerm<'a>,
+    target_r: TapeTerm<'a>,
 }
 
 // fn orbital_elements(pos: Vec2<f64>, velo: Vec2<f64>, mu: f64) -> f64 {

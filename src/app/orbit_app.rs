@@ -56,8 +56,7 @@ impl OrbitalApp {
     }
 
     fn init_state(mut orbital_params: OrbitalParams) -> (OrbitalState, OrbitalParams) {
-        orbital_params.moon_pos = None;
-        (ORBITAL_STATE, orbital_params)
+        (ORBITAL_STATE, OrbitalParams::default())
     }
 
     pub fn paint_graph(&mut self, ui: &mut Ui) {
@@ -178,7 +177,7 @@ impl OrbitalApp {
                         .iter()
                         .map(|x| x.satellite.pos)
                         .collect::<Vec<_>>(),
-                    Color32::from_rgb(191, 191, 191),
+                    Color32::from_rgb(127, 127, 0),
                 );
                 render_path(
                     &self

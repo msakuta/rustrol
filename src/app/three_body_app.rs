@@ -12,7 +12,7 @@ use eframe::{
 use crate::{
     orbital::{
         calc_initial_moon, simulate_three_body, three_body_simulate_step, OrbitalParams,
-        ThreeBodyResult, ThreeBodyState, GM, THREE_BODY_STATE,
+        ThreeBodyParams, ThreeBodyResult, ThreeBodyState, GM, THREE_BODY_STATE,
     },
     vec2::Vec2,
     xor128::Xor128,
@@ -66,6 +66,7 @@ impl ThreeBodyApp {
         let mut three_body_state = THREE_BODY_STATE;
         orbital_params.grid_search_size = 1;
         orbital_params.max_iter *= 2;
+        orbital_params.three_body = Some(ThreeBodyParams::default());
         // orbital_params.earth_gm *= 0.5;
         // orbital_params.moon_gm *= 0.5;
         three_body_state.moon = calc_initial_moon(&orbital_params).unwrap();
@@ -135,6 +136,20 @@ impl ThreeBodyApp {
                 render_path(&positions, Color32::from_rgb(63, 63, 191));
                 render_path(&moon_positions, Color32::from_rgb(63, 63, 63));
             } else {
+                if let Some(three_params) = &self.orbital_params.three_body {
+                    let moon_pos = three_params.moon_pos;
+                    let moon_orbit_r = moon_pos.length();
+                    painter.circle_stroke(
+                        to_pos2(Vec2::zero()),
+                        (moon_orbit_r + three_params.initial_r) as f32 * SCALE,
+                        (1., Color32::from_rgb(191, 191, 191)),
+                    );
+                    painter.circle_stroke(
+                        to_pos2(Vec2::zero()),
+                        (moon_orbit_r - three_params.initial_r) as f32 * SCALE,
+                        (1., Color32::from_rgb(191, 191, 191)),
+                    );
+                }
                 render_path(
                     &self
                         .three_body_result
@@ -151,7 +166,7 @@ impl ThreeBodyApp {
                         .iter()
                         .map(|x| x.satellite.pos)
                         .collect::<Vec<_>>(),
-                    Color32::from_rgb(191, 191, 191),
+                    Color32::from_rgb(127, 127, 0),
                 );
             }
 

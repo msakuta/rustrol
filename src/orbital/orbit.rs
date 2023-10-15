@@ -3,8 +3,8 @@ use rustograd::{error::RustogradError, tape::TapeNode, Tape, TapeTerm};
 use crate::{error::GradDoesNotExist, ops::MinOp, orbital::optimize, vec2::Vec2};
 
 use super::{
-    gravity_f64, model_simulate_step, simulate_step, AbstractModelState, Body, BodyModelState,
-    Model, OrbitalBody, OrbitalParams, Vec2d, Vec2t, EARTH_POS, GM, THRUST_ACCEL,
+    model_simulate_step, simulate_step, AbstractModelState, Body, BodyModelState, Model,
+    OrbitalBody, OrbitalParams, Vec2d, Vec2t, EARTH_POS, GM, THRUST_ACCEL,
 };
 
 /// State of the whole system at an instant.
@@ -34,7 +34,7 @@ pub struct OrbitalResult {
 pub fn simulate_orbital(
     params: &OrbitalParams,
 ) -> Result<OrbitalResult, Box<dyn std::error::Error>> {
-    assert!(params.moon_pos.is_none());
+    assert!(params.three_body.is_none());
     let tape = Tape::new();
     let model = get_model(&tape, params);
 
@@ -192,7 +192,7 @@ fn get_model<'a>(tape: &'a Tape<f64>, params: &OrbitalParams) -> Model<'a, Model
         gm,
     };
 
-    for i in 0..params.max_iter {
+    for _ in 0..params.max_iter {
         let accel;
         let bodies = [earth];
         (pos, velo, accel) = model_simulate_step(pos, velo, &bodies, half);

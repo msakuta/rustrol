@@ -8,6 +8,25 @@ use super::{
     GM_MOON, THRUST_ACCEL,
 };
 
+const INIT_MOON_POS: Vec2<f64> = Vec2 { x: -3., y: 0. };
+
+#[derive(Clone, Copy)]
+pub struct ThreeBodyParams {
+    pub moon_pos: Vec2<f64>,
+    pub moon_gm: f64,
+    pub initial_r: f64,
+}
+
+impl Default for ThreeBodyParams {
+    fn default() -> Self {
+        Self {
+            moon_pos: INIT_MOON_POS,
+            moon_gm: GM_MOON,
+            initial_r: 0.5,
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 pub struct ThreeBodyState {
     pub satellite: OrbitalBody,
@@ -34,7 +53,7 @@ pub struct ThreeBodyResult {
 pub fn simulate_three_body(
     params: &OrbitalParams,
 ) -> Result<ThreeBodyResult, Box<dyn std::error::Error>> {
-    assert!(params.moon_pos.is_some());
+    assert!(params.three_body.is_some());
     let tape = Tape::new();
     let model = get_three_body_model(&tape, params);
 
@@ -174,7 +193,7 @@ fn get_three_body_model<'a>(
         tape.term("vx", params.initial_velo.x),
         tape.term("vy", params.initial_velo.y),
     );
-    let moon_pos = params.moon_pos.unwrap();
+    let moon_pos = params.three_body.unwrap().moon_pos;
     let moon = get_moon_model(tape, params, moon_pos);
 
     let gm = tape.term("GM", params.earth_gm);
@@ -210,26 +229,24 @@ fn get_three_body_model<'a>(
         });
     }
 
-    let loss = {
-        println!("Moon distance: {:?}", moon.initial_r.eval_noclear());
-        states
-            .iter()
-            .zip(moon.states.iter())
-            .fold(None, |acc: Option<TapeTerm<'a>>, (state, moon_state)| {
-                let diff = state.pos - moon_state.pos;
-                let loss = diff
-                    .length2()
-                    .apply("sqrt", f64::sqrt, |x| -0.5 * x.powf(-0.5))
-                    - moon.initial_r;
-                let loss = loss * loss;
-                if let Some(acc) = acc {
-                    Some(acc.apply_bin(loss, Box::new(MinOp)))
-                } else {
-                    Some(loss)
-                }
-            })
-            .unwrap()
-    };
+    println!("Moon distance: {:?}", moon.target_r.eval_noclear());
+    let loss = states
+        .iter()
+        .zip(moon.states.iter())
+        .fold(None, |acc: Option<TapeTerm<'a>>, (state, moon_state)| {
+            let diff = state.pos - moon_state.pos;
+            let loss = diff
+                .length2()
+                .apply("sqrt", f64::sqrt, |x| -0.5 * x.powf(-0.5))
+                - moon.target_r;
+            let loss = loss * loss;
+            if let Some(acc) = acc {
+                Some(acc.apply_bin(loss, Box::new(MinOp)))
+            } else {
+                Some(loss)
+            }
+        })
+        .unwrap();
 
     Model { states, loss }
 }
@@ -239,11 +256,6 @@ fn get_moon_model<'a>(
     params: &OrbitalParams,
     moon_pos: Vec2<f64>,
 ) -> BodyModel<'a> {
-    let pos = Vec2::new(-0.5, 0.) + moon_pos;
-    let delta_pos = pos - moon_pos;
-    let r = delta_pos.length();
-    let target_velo = delta_pos.left90() / r * (params.moon_gm / r).sqrt();
-    let target_pos = Vec2::new(tape.term("target_x", pos.x), tape.term("target_y", pos.y));
     let moon_delta = moon_pos - params.earth_pos;
     let moon_r = moon_delta.length();
     let moon_phase = moon_delta.y.atan2(moon_delta.x);
@@ -260,20 +272,20 @@ fn get_moon_model<'a>(
             BodyState { pos, velo }
         })
         .collect();
-    let moon_velo = Vec2::new(moon_phase.cos(), moon_phase.sin()).left90() * omega;
     BodyModel {
         states: moon_states,
-        gm: tape.term("GMm", params.moon_gm),
-        initial_r: tape.term("initial_r", 1.5),
+        gm: tape.term("GMm", params.three_body.unwrap().moon_gm),
+        target_r: tape.term("initial_r", params.three_body.unwrap().initial_r),
     }
 }
 
 pub fn calc_initial_moon(params: &OrbitalParams) -> Option<OrbitalBody> {
-    let moon_delta = params.moon_pos? - params.earth_pos;
+    let moon_pos = params.three_body?.moon_pos;
+    let moon_delta = moon_pos - params.earth_pos;
     let moon_r = moon_delta.length();
     let velo = moon_delta.left90() / moon_r * (GM / moon_r).sqrt();
     Some(OrbitalBody {
-        pos: params.moon_pos?,
+        pos: moon_pos,
         velo,
     })
 }
