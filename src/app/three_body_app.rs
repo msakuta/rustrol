@@ -11,8 +11,8 @@ use eframe::{
 
 use crate::{
     orbital::{
-        calc_initial_moon, orbital_simulate_step, simulate_orbital, OrbitalParams, OrbitalResult,
-        OrbitalState, GM, ORBITAL_STATE,
+        calc_initial_moon, simulate_three_body, three_body_simulate_step, OrbitalParams,
+        ThreeBodyResult, ThreeBodyState, GM, THREE_BODY_STATE,
     },
     vec2::Vec2,
     xor128::Xor128,
@@ -31,17 +31,17 @@ pub struct ThreeBodyApp {
     randomize: bool,
     rng: Xor128,
     playback_speed: f64,
-    orbital_state: OrbitalState,
-    orbital_model: OrbitalResult,
+    three_body_state: ThreeBodyState,
+    three_body_result: ThreeBodyResult,
     h_thrust: f64,
     v_thrust: f64,
     error_msg: Option<String>,
 }
 
 impl ThreeBodyApp {
-    pub fn new(use_moon: bool) -> Self {
-        let (orbital_state, orbital_params) = Self::init_state(use_moon, OrbitalParams::default());
-        let (orbital_model, error_msg) = match simulate_orbital(&orbital_params) {
+    pub fn new() -> Self {
+        let (three_body_state, orbital_params) = Self::init_state(OrbitalParams::default());
+        let (three_body_result, error_msg) = match simulate_three_body(&orbital_params) {
             Ok(res) => (res, None),
             Err(e) => (Default::default(), Some(e.to_string())),
         };
@@ -54,29 +54,22 @@ impl ThreeBodyApp {
             randomize: true,
             rng: Xor128::new(3232123),
             playback_speed: 0.5,
-            orbital_state,
-            orbital_model,
+            three_body_state,
+            three_body_result,
             h_thrust: 0.,
             v_thrust: 0.,
             error_msg,
         }
     }
 
-    fn init_state(
-        use_moon: bool,
-        mut orbital_params: OrbitalParams,
-    ) -> (OrbitalState, OrbitalParams) {
-        let mut orbital_state = ORBITAL_STATE;
-        if !use_moon {
-            orbital_params.moon_pos = None;
-        } else {
-            orbital_params.grid_search_size = 1;
-            orbital_params.max_iter *= 2;
-            // orbital_params.earth_gm *= 0.5;
-            // orbital_params.moon_gm *= 0.5;
-            orbital_state.moon = calc_initial_moon(&orbital_params);
-        }
-        (orbital_state, orbital_params)
+    fn init_state(mut orbital_params: OrbitalParams) -> (ThreeBodyState, OrbitalParams) {
+        let mut three_body_state = THREE_BODY_STATE;
+        orbital_params.grid_search_size = 1;
+        orbital_params.max_iter *= 2;
+        // orbital_params.earth_gm *= 0.5;
+        // orbital_params.moon_gm *= 0.5;
+        three_body_state.moon = calc_initial_moon(&orbital_params).unwrap();
+        (three_body_state, orbital_params)
     }
 
     pub fn paint_graph(&mut self, ui: &mut Ui) {
@@ -131,20 +124,20 @@ impl ThreeBodyApp {
             };
 
             if self.direct_control {
-                let mut state = self.orbital_state;
+                let mut state = self.three_body_state;
                 let mut positions = vec![];
                 let mut moon_positions = vec![];
                 for _ in 0..self.prediction_horizon {
-                    orbital_simulate_step(&mut state, 0., 0., 1.);
+                    three_body_simulate_step(&mut state, 0., 0., 1.);
                     positions.push(state.satellite.pos);
-                    moon_positions.push(state.moon.unwrap().pos);
+                    moon_positions.push(state.moon.pos);
                 }
                 render_path(&positions, Color32::from_rgb(63, 63, 191));
                 render_path(&moon_positions, Color32::from_rgb(63, 63, 63));
             } else {
                 render_path(
                     &self
-                        .orbital_model
+                        .three_body_result
                         .before_optim
                         .iter()
                         .map(|x| x.satellite.pos)
@@ -153,7 +146,7 @@ impl ThreeBodyApp {
                 );
                 render_path(
                     &self
-                        .orbital_model
+                        .three_body_result
                         .after_optim
                         .iter()
                         .map(|x| x.satellite.pos)
@@ -162,7 +155,7 @@ impl ThreeBodyApp {
                 );
             }
 
-            let render_orbit = |orbital_state: &OrbitalState| {
+            let render_orbit = |orbital_state: &ThreeBodyState| {
                 render_satellite(&painter, to_pos2(orbital_state.satellite.pos));
 
                 painter.circle(
@@ -174,29 +167,27 @@ impl ThreeBodyApp {
             };
 
             if self.direct_control {
-                render_orbit(&self.orbital_state);
+                render_orbit(&self.three_body_state);
 
-                if let Some(moon) = self.orbital_state.moon {
-                    painter.circle(to_pos2(moon.pos), 5., Color32::WHITE, (1., Color32::BLACK));
-                }
-            } else if let Some(orbital_state) = self.orbital_model.after_optim.get(self.t as usize)
+                let moon = &self.three_body_state.moon;
+                painter.circle(to_pos2(moon.pos), 5., Color32::WHITE, (1., Color32::BLACK));
+            } else if let Some(orbital_state) =
+                self.three_body_result.after_optim.get(self.t as usize)
             {
                 render_orbit(orbital_state);
 
                 let moon_poses: Vec<_> = self
-                    .orbital_model
+                    .three_body_result
                     .after_optim
                     .iter()
-                    .filter_map(|state| state.moon.as_ref())
-                    .map(|moon| moon.pos)
+                    .map(|state| state.moon.pos)
                     .collect();
                 render_path(&moon_poses, Color32::from_rgb(63, 63, 63));
                 if let Some(moon_pos) = self
-                    .orbital_model
+                    .three_body_result
                     .after_optim
                     .get(self.t as usize)
-                    .and_then(|state| state.moon)
-                    .map(|moon| moon.pos)
+                    .map(|state| state.moon.pos)
                 {
                     painter.circle(to_pos2(moon_pos), 5., Color32::WHITE, (1., Color32::BLACK));
                 }
@@ -214,8 +205,8 @@ impl ThreeBodyApp {
     }
 
     fn try_simulate(&mut self) {
-        match simulate_orbital(&self.orbital_params) {
-            Ok(res) => self.orbital_model = res,
+        match simulate_three_body(&self.orbital_params) {
+            Ok(res) => self.three_body_result = res,
             Err(e) => self.error_msg = Some(e.to_string()),
         }
         self.t = 0.;
@@ -228,13 +219,13 @@ impl ThreeBodyApp {
         let velo = Vec2 { x: -y, y: x } / r * (GM / r).sqrt();
 
         if self.direct_control {
-            self.orbital_state.satellite.pos = pos;
-            self.orbital_state.satellite.velo = velo;
+            self.three_body_state.satellite.pos = pos;
+            self.three_body_state.satellite.velo = velo;
         } else {
             self.orbital_params.initial_pos = pos;
             self.orbital_params.initial_velo = velo;
-            match simulate_orbital(&self.orbital_params) {
-                Ok(res) => self.orbital_model = res,
+            match simulate_three_body(&self.orbital_params) {
+                Ok(res) => self.three_body_result = res,
                 Err(e) => self.error_msg = Some(e.to_string()),
             }
         }
@@ -245,8 +236,8 @@ impl ThreeBodyApp {
         ui.checkbox(&mut self.direct_control, "direct_control");
         if ui.button("Reset").clicked() {
             if self.direct_control {
-                (self.orbital_state, self.orbital_params) =
-                    Self::init_state(self.orbital_params.moon_pos.is_some(), self.orbital_params);
+                (self.three_body_state, self.orbital_params) =
+                    Self::init_state(self.orbital_params);
             } else {
                 self.try_simulate();
             }
@@ -304,8 +295,8 @@ impl ThreeBodyApp {
             });
 
             if !self.paused {
-                orbital_simulate_step(
-                    &mut self.orbital_state,
+                three_body_simulate_step(
+                    &mut self.three_body_state,
                     self.h_thrust,
                     self.v_thrust,
                     self.playback_speed as f64,
@@ -320,11 +311,11 @@ impl ThreeBodyApp {
 
     fn loss_history(&self) -> Line {
         let points: PlotPoints = self
-            .orbital_model
+            .three_body_result
             .after_optim
             .iter()
             .enumerate()
-            .filter_map(|(i, val)| Some([i as f64, (val.moon?.pos - val.satellite.pos).length()]))
+            .filter_map(|(i, val)| Some([i as f64, (val.moon.pos - val.satellite.pos).length()]))
             .collect();
         Line::new(points)
             .color(eframe::egui::Color32::from_rgb(100, 200, 100))

@@ -6,8 +6,8 @@ use eframe::{
 
 use crate::{
     orbital::{
-        calc_initial_moon, orbital_simulate_step, simulate_orbital, OrbitalParams, OrbitalResult,
-        OrbitalState, GM, ORBITAL_STATE,
+        orbital_simulate_step, simulate_orbital, OrbitalParams, OrbitalResult, OrbitalState, GM,
+        ORBITAL_STATE,
     },
     vec2::Vec2,
     xor128::Xor128,
@@ -32,8 +32,8 @@ pub struct OrbitalApp {
 }
 
 impl OrbitalApp {
-    pub fn new(use_moon: bool) -> Self {
-        let (orbital_state, orbital_params) = Self::init_state(use_moon, OrbitalParams::default());
+    pub fn new() -> Self {
+        let (orbital_state, orbital_params) = Self::init_state(OrbitalParams::default());
         let (orbital_model, error_msg) = match simulate_orbital(&orbital_params) {
             Ok(res) => (res, None),
             Err(e) => (Default::default(), Some(e.to_string())),
@@ -55,21 +55,9 @@ impl OrbitalApp {
         }
     }
 
-    fn init_state(
-        use_moon: bool,
-        mut orbital_params: OrbitalParams,
-    ) -> (OrbitalState, OrbitalParams) {
-        let mut orbital_state = ORBITAL_STATE;
-        if !use_moon {
-            orbital_params.moon_pos = None;
-        } else {
-            orbital_params.grid_search_size = 1;
-            orbital_params.max_iter *= 2;
-            // orbital_params.earth_gm *= 0.5;
-            // orbital_params.moon_gm *= 0.5;
-            orbital_state.moon = calc_initial_moon(&orbital_params);
-        }
-        (orbital_state, orbital_params)
+    fn init_state(mut orbital_params: OrbitalParams) -> (OrbitalState, OrbitalParams) {
+        orbital_params.moon_pos = None;
+        (ORBITAL_STATE, orbital_params)
     }
 
     pub fn paint_graph(&mut self, ui: &mut Ui) {
@@ -238,31 +226,9 @@ impl OrbitalApp {
 
             if self.direct_control {
                 render_orbit(&self.orbital_state);
-
-                if let Some(moon) = self.orbital_state.moon {
-                    painter.circle(to_pos2(moon.pos), 5., Color32::WHITE, (1., Color32::BLACK));
-                }
             } else if let Some(orbital_state) = self.orbital_model.after_optim.get(self.t as usize)
             {
                 render_orbit(orbital_state);
-
-                let moon_poses: Vec<_> = self
-                    .orbital_model
-                    .after_optim
-                    .iter()
-                    .filter_map(|state| state.moon.as_ref())
-                    .map(|moon| moon.pos)
-                    .collect();
-                render_path(&moon_poses, Color32::from_rgb(63, 63, 63));
-                if let Some(moon_pos) = self
-                    .orbital_model
-                    .after_optim
-                    .get(self.t as usize)
-                    .and_then(|state| state.moon)
-                    .map(|moon| moon.pos)
-                {
-                    painter.circle(to_pos2(moon_pos), 5., Color32::WHITE, (1., Color32::BLACK));
-                }
             } else {
                 if self.randomize {
                     let r = 3. * (self.rng.next() + 0.5);
@@ -308,8 +274,7 @@ impl OrbitalApp {
         ui.checkbox(&mut self.direct_control, "direct_control");
         if ui.button("Reset").clicked() {
             if self.direct_control {
-                (self.orbital_state, self.orbital_params) =
-                    Self::init_state(self.orbital_params.moon_pos.is_some(), self.orbital_params);
+                (self.orbital_state, self.orbital_params) = Self::init_state(self.orbital_params);
             } else {
                 self.try_simulate();
             }

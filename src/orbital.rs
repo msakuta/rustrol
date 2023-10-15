@@ -52,7 +52,6 @@ pub struct OrbitalBody {
 pub struct OrbitalState {
     pub satellite: OrbitalBody,
     pub target: OrbitalBody,
-    pub moon: Option<OrbitalBody>,
 }
 
 pub const ORBITAL_STATE: OrbitalState = OrbitalState {
@@ -64,7 +63,23 @@ pub const ORBITAL_STATE: OrbitalState = OrbitalState {
         pos: Vec2 { x: 0., y: 2. },
         velo: Vec2 { x: -0.12, y: 0. },
     },
-    moon: None,
+};
+
+#[derive(Clone, Copy)]
+pub struct ThreeBodyState {
+    pub satellite: OrbitalBody,
+    pub moon: OrbitalBody,
+}
+
+pub const THREE_BODY_STATE: ThreeBodyState = ThreeBodyState {
+    satellite: OrbitalBody {
+        pos: Vec2 { x: 2., y: 0. },
+        velo: Vec2 { x: 0., y: 0.12 },
+    },
+    moon: OrbitalBody {
+        pos: Vec2 { x: 0., y: 2. },
+        velo: Vec2 { x: -0.12, y: 0. },
+    },
 };
 
 #[derive(Default)]
@@ -76,6 +91,7 @@ pub struct OrbitalResult {
 pub fn simulate_orbital(
     params: &OrbitalParams,
 ) -> Result<OrbitalResult, Box<dyn std::error::Error>> {
+    assert!(params.moon_pos.is_none());
     let tape = Tape::new();
     let model = get_model(&tape, params);
 
@@ -146,6 +162,76 @@ pub fn simulate_orbital(
     }
 }
 
+#[derive(Default)]
+pub struct ThreeBodyResult {
+    pub before_optim: Vec<ThreeBodyState>,
+    pub after_optim: Vec<ThreeBodyState>,
+}
+
+pub fn simulate_three_body(
+    params: &OrbitalParams,
+) -> Result<ThreeBodyResult, Box<dyn std::error::Error>> {
+    assert!(params.moon_pos.is_some());
+    let tape = Tape::new();
+    let model = get_model(&tape, params);
+
+    let last_state = model.states.last().unwrap();
+
+    println!(
+        "tape nodes: {}, size: {}, states: {}",
+        tape.len(),
+        std::mem::size_of::<TapeNode<f64>>() * tape.len(),
+        model.states.len()
+    );
+
+    let first_state = model.states.first().unwrap();
+
+    model.loss.eval();
+    model.loss.backprop().unwrap();
+    let xd = try_grad!(first_state.velo.x);
+    let yd = try_grad!(first_state.velo.y);
+
+    let eval = [last_state.pos.x.eval(), last_state.pos.y.eval()];
+    println!(
+        "eval: {eval:?}, accel.eval: {:?}",
+        [last_state.accel.x.eval(), last_state.accel.y.eval()]
+    );
+    println!("simulate_orbital: derive(vx, vy): {:?}, {:?}", xd, yd);
+
+    let before_optim = model.states.iter().map(|state| state.into()).collect();
+
+    let mut best: Option<(Vec2<f64>, f64)> = None;
+    let velocity_magnitude = params.initial_velo.length();
+    for grid_y in -params.grid_search_size..params.grid_search_size {
+        for grid_x in -params.grid_search_size..params.grid_search_size {
+            let velo = Vec2 {
+                x: grid_x as f64 * velocity_magnitude * 0.5 + params.initial_velo.x,
+                y: grid_y as f64 * velocity_magnitude * 0.5 + params.initial_velo.y,
+            };
+            let loss = optimize(&model, &velo, params)?;
+            if let Some(best_val) = best {
+                if loss.1 < best_val.1 {
+                    best = Some(loss);
+                }
+            } else {
+                best = Some(loss);
+            }
+        }
+    }
+
+    if let Some(best) = best {
+        first_state.velo.x.set(best.0.x).unwrap();
+        first_state.velo.y.set(best.0.y).unwrap();
+
+        Ok(ThreeBodyResult {
+            before_optim,
+            after_optim: model.states.iter().map(|state| state.into()).collect(),
+        })
+    } else {
+        Err(format!("Optimization did not converge!").into())
+    }
+}
+
 fn optimize<'a>(
     model: &'a Model,
     velo: &Vec2<f64>,
@@ -194,6 +280,24 @@ fn optimize<'a>(
     ))
 }
 
+type Vec2d = Vec2<f64>;
+
+fn simulate_step(
+    bodies: &[&Body],
+    pos: Vec2d,
+    velo: Vec2d,
+    thrust: Vec2d,
+    delta_time: f64,
+) -> (Vec2d, Vec2d, Vec2d) {
+    let accel = gravity_f64(bodies, pos) + thrust;
+    let delta_x = (velo + accel * 0.5 * delta_time) * delta_time;
+    let accel2 = gravity_f64(bodies, pos + delta_x * 0.5) + thrust;
+    let delta_x2 = (velo + accel2 * 0.5 * delta_time) * delta_time;
+    let newpos = pos + delta_x2;
+    let newvelo = velo + accel2 * delta_time;
+    (newpos, newvelo, accel2)
+}
+
 const THRUST_ACCEL: f64 = 0.001;
 
 pub fn orbital_simulate_step(
@@ -210,28 +314,45 @@ pub fn orbital_simulate_step(
         pos: EARTH_POS,
         gm: GM,
     };
-    let moon = state.moon.map(|body| Body {
-        pos: body.pos,
-        gm: GM_MOON,
-    });
-    let simulate_step = |moon, pos, velo, thrust| {
-        let accel = gravity_f64(&earth, moon, pos) + thrust;
-        let delta_x = (velo + accel * 0.5 * delta_time) * delta_time;
-        let accel2 = gravity_f64(&earth, moon, pos + delta_x * 0.5) + thrust;
-        let delta_x2 = (velo + accel2 * 0.5 * delta_time) * delta_time;
-        let newpos = pos + delta_x2;
-        let newvelo = velo + accel2 * delta_time;
-        (newpos, newvelo, accel2)
-    };
     let sat = &mut state.satellite;
     let accel;
-    (sat.pos, sat.velo, accel) = simulate_step(moon.as_ref(), sat.pos, sat.velo, thrust);
+    (sat.pos, sat.velo, accel) = simulate_step(&[&earth], sat.pos, sat.velo, thrust, delta_time);
     let target = &mut state.target;
     (target.pos, target.velo, _) =
-        simulate_step(moon.as_ref(), target.pos, target.velo, Vec2::zero());
-    if let Some(ref mut moon) = state.moon {
-        (moon.pos, moon.velo, _) = simulate_step(None, moon.pos, moon.velo, Vec2::zero());
-    }
+        simulate_step(&[&earth], target.pos, target.velo, Vec2::zero(), delta_time);
+    accel
+}
+
+pub fn three_body_simulate_step(
+    state: &mut ThreeBodyState,
+    h_thrust: f64,
+    v_thrust: f64,
+    delta_time: f64,
+) -> Vec2<f64> {
+    let thrust = Vec2 {
+        x: h_thrust,
+        y: v_thrust,
+    } * THRUST_ACCEL;
+    let earth = Body {
+        pos: EARTH_POS,
+        gm: GM,
+    };
+    let sat = &mut state.satellite;
+    let moon_state = &mut state.moon;
+    let moon = Body {
+        pos: moon_state.pos,
+        gm: GM_MOON,
+    };
+    let accel;
+    (sat.pos, sat.velo, accel) =
+        simulate_step(&[&earth, &moon], sat.pos, sat.velo, thrust, delta_time);
+    (moon_state.pos, moon_state.velo, _) = simulate_step(
+        &[&earth],
+        moon_state.pos,
+        moon_state.velo,
+        Vec2::zero(),
+        delta_time,
+    );
     accel
 }
 
@@ -266,10 +387,22 @@ impl<'a> From<&ModelState<'a>> for OrbitalState {
                 pos: state.target_pos.map(|x| x.eval_noclear()),
                 velo: state.target_velo.map(|x| x.eval_noclear()),
             },
-            moon: state.moon.map(|moon| OrbitalBody {
+        }
+    }
+}
+
+impl<'a> From<&ModelState<'a>> for ThreeBodyState {
+    fn from(state: &ModelState<'a>) -> Self {
+        let moon = state.moon.unwrap();
+        Self {
+            satellite: OrbitalBody {
+                pos: state.pos.map(|x| x.eval()),
+                velo: state.velo.map(|x| x.eval()),
+            },
+            moon: OrbitalBody {
                 pos: moon.pos.map(|x| x.eval_noclear()),
                 velo: moon.velo,
-            }),
+            },
         }
     }
 }
@@ -311,7 +444,7 @@ fn get_model<'a>(tape: &'a Tape<f64>, params: &OrbitalParams) -> Model<'a> {
         velo,
         target_pos,
         target_velo,
-        moon: None,
+        moon: moon.as_ref().map(|moon| moon.states[0]),
     }];
 
     let simulate_step = |pos, vx, moon| {
@@ -408,7 +541,7 @@ fn get_moon_model<'a>(
     let moon_phase = moon_delta.y.atan2(moon_delta.x);
     let period = 2. * std::f64::consts::PI * (moon_r.powi(3) / params.earth_gm).sqrt();
     let omega = 2. * std::f64::consts::PI / period;
-    let moon_states: Vec<_> = (0..params.max_iter)
+    let moon_states: Vec<_> = (0..=params.max_iter)
         .map(|i| {
             let angle = i as f64 * omega + moon_phase;
             let pos = Vec2::new(
@@ -493,16 +626,14 @@ struct Body {
     gm: f64,
 }
 
-fn gravity_f64(earth: &Body, moon: Option<&Body>, pos: Vec2<f64>) -> Vec2<f64> {
+fn gravity_f64(bodies: &[&Body], pos: Vec2<f64>) -> Vec2<f64> {
     let gravity_body = |body: &Body| {
         let diff = body.pos - pos;
         let len2 = diff.x * diff.x + diff.y * diff.y;
         let len32 = len2.powf(3. / 2.);
         diff / len32 * body.gm
     };
-    if let Some(moon) = moon {
-        gravity_body(earth) + gravity_body(moon)
-    } else {
-        gravity_body(earth)
-    }
+    bodies
+        .iter()
+        .fold(Vec2::zero(), |acc, cur| acc + gravity_body(cur))
 }

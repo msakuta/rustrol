@@ -70,10 +70,8 @@ impl eframe::App for RustrolApp {
                     match self.app_radio {
                         AppRadio::Lander => self.app = AppSelect::Lander(LanderApp::new()),
                         AppRadio::Missile => self.app = AppSelect::Missile(MissileApp::new()),
-                        AppRadio::Orbital => self.app = AppSelect::Orbital(OrbitalApp::new(false)),
-                        AppRadio::ThreeBody => {
-                            self.app = AppSelect::ThreeBody(ThreeBodyApp::new(true))
-                        }
+                        AppRadio::Orbital => self.app = AppSelect::Orbital(OrbitalApp::new()),
+                        AppRadio::ThreeBody => self.app = AppSelect::ThreeBody(ThreeBodyApp::new()),
                     }
                 }
 
