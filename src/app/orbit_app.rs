@@ -33,7 +33,7 @@ pub struct OrbitalApp {
 
 impl OrbitalApp {
     pub fn new() -> Self {
-        let (orbital_state, orbital_params) = Self::init_state(OrbitalParams::default());
+        let (orbital_state, orbital_params) = Self::init_state();
         let (orbital_model, error_msg) = match simulate_orbital(&orbital_params) {
             Ok(res) => (res, None),
             Err(e) => (Default::default(), Some(e.to_string())),
@@ -55,7 +55,7 @@ impl OrbitalApp {
         }
     }
 
-    fn init_state(mut orbital_params: OrbitalParams) -> (OrbitalState, OrbitalParams) {
+    fn init_state() -> (OrbitalState, OrbitalParams) {
         (ORBITAL_STATE, OrbitalParams::default())
     }
 
@@ -273,7 +273,7 @@ impl OrbitalApp {
         ui.checkbox(&mut self.direct_control, "direct_control");
         if ui.button("Reset").clicked() {
             if self.direct_control {
-                (self.orbital_state, self.orbital_params) = Self::init_state(self.orbital_params);
+                (self.orbital_state, self.orbital_params) = Self::init_state();
             } else {
                 self.try_simulate();
             }

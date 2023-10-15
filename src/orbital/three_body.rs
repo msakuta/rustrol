@@ -14,7 +14,7 @@ const INIT_MOON_POS: Vec2<f64> = Vec2 { x: -3., y: 0. };
 pub struct ThreeBodyParams {
     pub moon_pos: Vec2<f64>,
     pub moon_gm: f64,
-    pub initial_r: f64,
+    pub target_r: f64,
 }
 
 impl Default for ThreeBodyParams {
@@ -22,7 +22,7 @@ impl Default for ThreeBodyParams {
         Self {
             moon_pos: INIT_MOON_POS,
             moon_gm: GM_MOON,
-            initial_r: 0.5,
+            target_r: 0.5,
         }
     }
 }
@@ -275,7 +275,7 @@ fn get_moon_model<'a>(
     BodyModel {
         states: moon_states,
         gm: tape.term("GMm", params.three_body.unwrap().moon_gm),
-        target_r: tape.term("initial_r", params.three_body.unwrap().initial_r),
+        target_r: tape.term("target_r", params.three_body.unwrap().target_r),
     }
 }
 

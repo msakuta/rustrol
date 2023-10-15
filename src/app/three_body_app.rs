@@ -141,12 +141,12 @@ impl ThreeBodyApp {
                     let moon_orbit_r = moon_pos.length();
                     painter.circle_stroke(
                         to_pos2(Vec2::zero()),
-                        (moon_orbit_r + three_params.initial_r) as f32 * SCALE,
+                        (moon_orbit_r + three_params.target_r) as f32 * SCALE,
                         (1., Color32::from_rgb(191, 191, 191)),
                     );
                     painter.circle_stroke(
                         to_pos2(Vec2::zero()),
-                        (moon_orbit_r - three_params.initial_r) as f32 * SCALE,
+                        (moon_orbit_r - three_params.target_r) as f32 * SCALE,
                         (1., Color32::from_rgb(191, 191, 191)),
                     );
                 }
@@ -285,6 +285,11 @@ impl ThreeBodyApp {
         ui.add(egui::widgets::Slider::new(
             &mut self.orbital_params.initial_velo_weight,
             (0.)..=10.,
+        ));
+        ui.label("Orbit target raidus:");
+        ui.add(egui::widgets::Slider::new(
+            &mut self.orbital_params.three_body.as_mut().unwrap().target_r,
+            (0.1)..=3.,
         ));
         ui.label("Prediction horizon:");
         ui.add(egui::widgets::Slider::new(
