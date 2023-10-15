@@ -361,12 +361,6 @@ pub const GM: f64 = 0.03;
 pub const GM_MOON: f64 = GM / 3.;
 const INIT_MOON_POS: Vec2<f64> = Vec2 { x: -3., y: 0. };
 
-struct BodyModelState<'a> {
-    pos: Vec2<TapeTerm<'a>>,
-    velo: Vec2<TapeTerm<'a>>,
-    gm: TapeTerm<'a>,
-}
-
 struct ModelState<'a> {
     accel: Vec2<TapeTerm<'a>>,
     pos: Vec2<TapeTerm<'a>>,
@@ -407,6 +401,14 @@ impl<'a> From<&ModelState<'a>> for ThreeBodyState {
     }
 }
 
+type Vec2t<'a> = Vec2<TapeTerm<'a>>;
+
+#[derive(Clone, Copy)]
+struct BodyModelState<'a> {
+    pos: Vec2<TapeTerm<'a>>,
+    gm: TapeTerm<'a>,
+}
+
 struct Model<'a> {
     states: Vec<ModelState<'a>>,
     loss: TapeTerm<'a>,
@@ -421,7 +423,6 @@ fn get_model<'a>(tape: &'a Tape<f64>, params: &OrbitalParams) -> Model<'a> {
         tape.term("vx", params.initial_velo.x),
         tape.term("vy", params.initial_velo.y),
     );
-    let earth = Vec2::new(tape.term("bx", 0.), tape.term("by", 0.));
     let mut target_pos;
     let mut target_velo;
     let moon;
@@ -447,28 +448,53 @@ fn get_model<'a>(tape: &'a Tape<f64>, params: &OrbitalParams) -> Model<'a> {
         moon: moon.as_ref().map(|moon| moon.states[0]),
     }];
 
-    let simulate_step = |pos, vx, moon| {
-        let accel = gravity(earth, moon, pos, gm);
+    let earth = BodyModelState {
+        pos: Vec2::new(zero, zero),
+        gm,
+    };
+
+    fn simulate_step<'a>(
+        pos: Vec2t<'a>,
+        vx: Vec2t<'a>,
+        bodies: &[BodyModelState<'a>],
+        half: TapeTerm<'a>,
+    ) -> (Vec2t<'a>, Vec2t<'a>, Vec2t<'a>) {
+        let accel = gravity(bodies, pos).unwrap();
         let delta_x = vx + accel * half;
-        let accel2 = gravity(earth, moon, pos + delta_x * half, gm);
+        let accel2 = gravity(bodies, pos + delta_x * half).unwrap();
         let delta_x2 = vx + accel2 * half;
         let pos = pos + delta_x2;
         let vx = vx + accel2;
         (pos, vx, accel2)
-    };
+    }
 
     for i in 0..params.max_iter {
-        let moon_i = moon.as_ref().map(|moon| (moon.states[i], moon.gm));
-        let (pos2, vx2, accel) = simulate_step(pos, velo, moon_i);
-        (pos, velo) = (pos2, vx2);
-        (target_pos, target_velo, _) = simulate_step(target_pos, target_velo, moon_i);
+        let accel;
+        let moon_pos;
+        if let Some(moon) = moon.as_ref() {
+            let bodies = [
+                earth,
+                BodyModelState {
+                    pos: moon.states[i].pos,
+                    gm: moon.gm,
+                },
+            ];
+            (pos, velo, accel) = simulate_step(pos, velo, &bodies, half);
+            (target_pos, target_velo, _) = simulate_step(target_pos, target_velo, &bodies, half);
+            moon_pos = Some(moon.states[i]);
+        } else {
+            let bodies = [earth];
+            (pos, velo, accel) = simulate_step(pos, velo, &bodies, half);
+            (target_pos, target_velo, _) = simulate_step(target_pos, target_velo, &bodies, half);
+            moon_pos = None;
+        };
         states.push(ModelState {
             accel,
             pos,
             velo,
             target_pos,
             target_velo,
-            moon: moon_i.map(|(s, _)| s),
+            moon: moon_pos,
         });
     }
 
@@ -599,11 +625,9 @@ pub fn calc_initial_moon(params: &OrbitalParams) -> Option<OrbitalBody> {
 // }
 
 fn gravity<'a>(
-    earth: Vec2<TapeTerm<'a>>,
-    moon: Option<(BodyState<'a>, TapeTerm<'a>)>,
+    bodies: &[BodyModelState<'a>],
     pos: Vec2<TapeTerm<'a>>,
-    gm: TapeTerm<'a>,
-) -> Vec2<TapeTerm<'a>> {
+) -> Option<Vec2<TapeTerm<'a>>> {
     let gravity_body = |body: Vec2<TapeTerm<'a>>| -> Vec2<TapeTerm<'a>> {
         let diff = body - pos;
         let len2 = diff.x * diff.x + diff.y * diff.y;
@@ -614,11 +638,13 @@ fn gravity<'a>(
         );
         diff / len32
     };
-    if let Some(moon) = moon {
-        gravity_body(earth) * gm + gravity_body(moon.0.pos) * moon.1
-    } else {
-        gravity_body(earth) * gm
-    }
+    bodies.iter().fold(None, |acc, cur| {
+        Some(if let Some(acc) = acc {
+            acc + gravity_body(cur.pos) * cur.gm
+        } else {
+            gravity_body(cur.pos) * cur.gm
+        })
+    })
 }
 
 struct Body {
