@@ -1,18 +1,13 @@
 use eframe::{
-    egui::{
-        self,
-        plot::{Legend, Line, PlotPoints},
-        widgets::plot::Plot,
-        Context, Frame, Ui,
-    },
+    egui::{self, Context, Frame, Painter, Ui},
     emath::Align2,
     epaint::{pos2, Color32, FontId, PathShape, Pos2, Rect},
 };
 
 use crate::{
     orbital::{
-        calc_initial_moon, orbital_simulate_step, simulate_orbital, OrbitalBody, OrbitalParams,
-        OrbitalResult, OrbitalState, GM, ORBITAL_STATE,
+        calc_initial_moon, orbital_simulate_step, simulate_orbital, OrbitalParams, OrbitalResult,
+        OrbitalState, GM, ORBITAL_STATE,
     },
     vec2::Vec2,
     xor128::Xor128,
@@ -224,38 +219,7 @@ impl OrbitalApp {
             }
 
             let render_orbit = |orbital_state: &OrbitalState| {
-                let missile_pos = to_pos2(orbital_state.satellite.pos).to_vec2();
-                let convert_to_poly = |vertices: &[[f32; 2]]| {
-                    PathShape::convex_polygon(
-                        vertices
-                            .into_iter()
-                            .map(|ofs| pos2(ofs[0], ofs[1]) + missile_pos)
-                            .collect(),
-                        Color32::BLUE,
-                        (1., Color32::RED),
-                    )
-                };
-
-                painter.add(convert_to_poly(&[
-                    [-5., -5.],
-                    [5., -5.],
-                    [5., 5.],
-                    [-5., 5.],
-                ]));
-
-                painter.add(convert_to_poly(&[
-                    [-8., 3.],
-                    [-8., -3.],
-                    [-18., -3.],
-                    [-18., 3.],
-                ]));
-
-                painter.add(convert_to_poly(&[
-                    [8., 3.],
-                    [8., -3.],
-                    [18., -3.],
-                    [18., 3.],
-                ]));
+                render_satellite(&painter, to_pos2(orbital_state.satellite.pos));
 
                 painter.circle(
                     to_pos2(self.orbital_params.earth_pos),
@@ -416,29 +380,39 @@ impl OrbitalApp {
             self.t += self.playback_speed;
         }
     }
+}
 
-    fn loss_history(&self) -> Line {
-        let points: PlotPoints = self
-            .orbital_model
-            .after_optim
-            .iter()
-            .enumerate()
-            .filter_map(|(i, val)| Some([i as f64, (val.moon?.pos - val.satellite.pos).length()]))
-            .collect();
-        Line::new(points)
-            .color(eframe::egui::Color32::from_rgb(100, 200, 100))
-            .name("Distance between the satellite and the Moon")
-    }
+pub(super) fn render_satellite(painter: &Painter, pos: Pos2) {
+    let missile_pos = pos.to_vec2();
+    let convert_to_poly = |vertices: &[[f32; 2]]| {
+        PathShape::convex_polygon(
+            vertices
+                .into_iter()
+                .map(|ofs| pos2(ofs[0], ofs[1]) + missile_pos)
+                .collect(),
+            Color32::BLUE,
+            (1., Color32::RED),
+        )
+    };
 
-    pub fn render_plot(&mut self, ctx: &Context) {
-        eframe::egui::TopBottomPanel::bottom("bottom")
-            .resizable(true)
-            .show(ctx, |ui| {
-                let plot = Plot::new("plot");
-                plot.legend(Legend::default()).show(ui, |plot_ui| {
-                    let hist = self.loss_history();
-                    plot_ui.line(hist);
-                })
-            });
-    }
+    painter.add(convert_to_poly(&[
+        [-5., -5.],
+        [5., -5.],
+        [5., 5.],
+        [-5., 5.],
+    ]));
+
+    painter.add(convert_to_poly(&[
+        [-8., 3.],
+        [-8., -3.],
+        [-18., -3.],
+        [-18., 3.],
+    ]));
+
+    painter.add(convert_to_poly(&[
+        [8., 3.],
+        [8., -3.],
+        [18., -3.],
+        [18., 3.],
+    ]));
 }

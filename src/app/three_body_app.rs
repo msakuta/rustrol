@@ -11,12 +11,14 @@ use eframe::{
 
 use crate::{
     orbital::{
-        calc_initial_moon, orbital_simulate_step, simulate_orbital, OrbitalBody, OrbitalParams,
-        OrbitalResult, OrbitalState, GM, ORBITAL_STATE,
+        calc_initial_moon, orbital_simulate_step, simulate_orbital, OrbitalParams, OrbitalResult,
+        OrbitalState, GM, ORBITAL_STATE,
     },
     vec2::Vec2,
     xor128::Xor128,
 };
+
+use super::orbit_app::render_satellite;
 
 const SCALE: f32 = 50.;
 
@@ -161,38 +163,7 @@ impl ThreeBodyApp {
             }
 
             let render_orbit = |orbital_state: &OrbitalState| {
-                let missile_pos = to_pos2(orbital_state.satellite.pos).to_vec2();
-                let convert_to_poly = |vertices: &[[f32; 2]]| {
-                    PathShape::convex_polygon(
-                        vertices
-                            .into_iter()
-                            .map(|ofs| pos2(ofs[0], ofs[1]) + missile_pos)
-                            .collect(),
-                        Color32::BLUE,
-                        (1., Color32::RED),
-                    )
-                };
-
-                painter.add(convert_to_poly(&[
-                    [-5., -5.],
-                    [5., -5.],
-                    [5., 5.],
-                    [-5., 5.],
-                ]));
-
-                painter.add(convert_to_poly(&[
-                    [-8., 3.],
-                    [-8., -3.],
-                    [-18., -3.],
-                    [-18., 3.],
-                ]));
-
-                painter.add(convert_to_poly(&[
-                    [8., 3.],
-                    [8., -3.],
-                    [18., -3.],
-                    [18., 3.],
-                ]));
+                render_satellite(&painter, to_pos2(orbital_state.satellite.pos));
 
                 painter.circle(
                     to_pos2(self.orbital_params.earth_pos),
