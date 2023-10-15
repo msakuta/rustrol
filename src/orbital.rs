@@ -1,5 +1,5 @@
 use crate::{error::GradDoesNotExist, ops::MinOp, vec2::Vec2};
-use rustograd::{tape::TapeNode, Tape, TapeTerm};
+use rustograd::{error::RustogradError, tape::TapeNode, Tape, TapeTerm};
 
 const RATE: f64 = 3e-4;
 
@@ -236,11 +236,11 @@ fn optimize<'a, S: AbstractModelState<'a>>(
     model: &'a Model<'a, S>,
     velo: &Vec2<f64>,
     params: &OrbitalParams,
-) -> Result<(Vec2<f64>, f64), GradDoesNotExist> {
+) -> Result<(Vec2<f64>, f64), Box<dyn std::error::Error>> {
     const RATE: f64 = 1e-5;
 
     let first_state = model.states.first().unwrap();
-    first_state.set_velo(velo);
+    first_state.set_velo(velo)?;
 
     let mut loss_val = 0.;
 
@@ -373,7 +373,7 @@ impl<'a> AbstractModelState<'a> for ModelState<'a> {
     fn get_velo(&self) -> Vec2t<'a> {
         self.velo
     }
-    fn set_velo(&self, velo: &Vec2d) -> Result<(), ()> {
+    fn set_velo(&self, velo: &Vec2d) -> Result<(), RustogradError> {
         self.velo.x.set(velo.x)?;
         self.velo.y.set(velo.y)?;
         Ok(())
@@ -406,7 +406,7 @@ impl<'a> AbstractModelState<'a> for ThreeBodyModelState<'a> {
     fn get_velo(&self) -> Vec2t<'a> {
         self.velo
     }
-    fn set_velo(&self, velo: &Vec2d) -> Result<(), ()> {
+    fn set_velo(&self, velo: &Vec2d) -> Result<(), RustogradError> {
         self.velo.x.set(velo.x)?;
         self.velo.y.set(velo.y)?;
         Ok(())
@@ -454,7 +454,7 @@ fn model_simulate_step<'a>(
 
 trait AbstractModelState<'a> {
     fn get_velo(&self) -> Vec2t<'a>;
-    fn set_velo(&self, velo: &Vec2d) -> Result<(), ()>;
+    fn set_velo(&self, velo: &Vec2d) -> Result<(), RustogradError>;
 }
 
 struct Model<'a, S: AbstractModelState<'a>> {
