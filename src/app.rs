@@ -1,14 +1,13 @@
 mod lander_app;
 mod missile_app;
 mod orbit_app;
+mod three_body_app;
 
 use eframe::egui::{self, Context};
 
 use self::{
-    lander_app::LanderApp,
-    missile_app::MissileApp,
-    orbit_app::OrbitalApp,
-    // three_body_app::ThreeBodyApp,
+    lander_app::LanderApp, missile_app::MissileApp, orbit_app::OrbitalApp,
+    three_body_app::ThreeBodyApp,
 };
 
 const SCALE: f32 = 10.;
@@ -27,7 +26,7 @@ pub enum AppSelect {
     Lander(LanderApp),
     Missile(MissileApp),
     Orbital(OrbitalApp),
-    ThreeBody(OrbitalApp),
+    ThreeBody(ThreeBodyApp),
 }
 
 pub struct RustrolApp {
@@ -73,7 +72,7 @@ impl eframe::App for RustrolApp {
                         AppRadio::Missile => self.app = AppSelect::Missile(MissileApp::new()),
                         AppRadio::Orbital => self.app = AppSelect::Orbital(OrbitalApp::new(false)),
                         AppRadio::ThreeBody => {
-                            self.app = AppSelect::ThreeBody(OrbitalApp::new(true))
+                            self.app = AppSelect::ThreeBody(ThreeBodyApp::new(true))
                         }
                     }
                 }
