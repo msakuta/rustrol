@@ -173,11 +173,15 @@ impl ThreeBodyApp {
             let render_orbit = |orbital_state: &ThreeBodyState| {
                 render_satellite(&painter, to_pos2(orbital_state.satellite.pos));
 
-                painter.circle(
-                    to_pos2(self.orbital_params.earth_pos),
-                    10.,
-                    Color32::WHITE,
-                    (1., Color32::BLACK),
+                let pos = to_pos2(self.orbital_params.earth_pos);
+                painter.circle(pos, 10., Color32::WHITE, (1., Color32::BLACK));
+
+                painter.text(
+                    pos,
+                    Align2::CENTER_BOTTOM,
+                    "Earth",
+                    FontId::monospace(16.),
+                    Color32::BLACK,
                 );
             };
 
@@ -185,7 +189,15 @@ impl ThreeBodyApp {
                 render_orbit(&self.three_body_state);
 
                 let moon = &self.three_body_state.moon;
-                painter.circle(to_pos2(moon.pos), 5., Color32::WHITE, (1., Color32::BLACK));
+                let moon_pos = to_pos2(moon.pos);
+                painter.circle(moon_pos, 5., Color32::WHITE, (1., Color32::BLACK));
+                painter.text(
+                    moon_pos,
+                    Align2::CENTER_BOTTOM,
+                    "Moon",
+                    FontId::monospace(16.),
+                    Color32::BLACK,
+                );
             } else if let Some(orbital_state) =
                 self.three_body_result.after_optim.get(self.t as usize)
             {
@@ -204,7 +216,15 @@ impl ThreeBodyApp {
                     .get(self.t as usize)
                     .map(|state| state.moon.pos)
                 {
-                    painter.circle(to_pos2(moon_pos), 5., Color32::WHITE, (1., Color32::BLACK));
+                    let moon_pos = to_pos2(moon_pos);
+                    painter.circle(moon_pos, 5., Color32::WHITE, (1., Color32::BLACK));
+                    painter.text(
+                        moon_pos,
+                        Align2::CENTER_BOTTOM,
+                        "Moon",
+                        FontId::monospace(16.),
+                        Color32::BLACK,
+                    );
                 }
             } else {
                 if self.randomize {

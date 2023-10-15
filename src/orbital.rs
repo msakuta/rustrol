@@ -14,7 +14,7 @@ use rustograd::{error::RustogradError, TapeTerm};
 type Vec2d = Vec2<f64>;
 type Vec2t<'a> = Vec2<TapeTerm<'a>>;
 
-const RATE: f64 = 3e-4;
+const RATE: f64 = 1e-5;
 const THRUST_ACCEL: f64 = 0.001;
 const EARTH_POS: Vec2<f64> = Vec2 { x: 0., y: 0. };
 pub const GM: f64 = 0.03;
@@ -67,8 +67,6 @@ fn optimize<'a, S: AbstractModelState<'a>>(
     velo: &Vec2<f64>,
     params: &OrbitalParams,
 ) -> Result<(Vec2<f64>, f64), Box<dyn std::error::Error>> {
-    const RATE: f64 = 1e-5;
-
     let first_state = model.states.first().unwrap();
     first_state.set_velo(velo)?;
 
@@ -84,11 +82,11 @@ fn optimize<'a, S: AbstractModelState<'a>>(
         let yd = try_grad!(first_velo.y);
         first_velo
             .x
-            .set(first_velo.x.data().unwrap() - xd * RATE)
+            .set(first_velo.x.data().unwrap() - xd * params.rate)
             .unwrap();
         first_velo
             .y
-            .set(first_velo.y.data().unwrap() - yd * RATE)
+            .set(first_velo.y.data().unwrap() - yd * params.rate)
             .unwrap();
         loss_val = model.loss.eval();
         // println!(

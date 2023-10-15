@@ -208,11 +208,15 @@ impl OrbitalApp {
             let render_orbit = |orbital_state: &OrbitalState| {
                 render_satellite(&painter, to_pos2(orbital_state.satellite.pos));
 
-                painter.circle(
-                    to_pos2(self.orbital_params.earth_pos),
-                    10.,
-                    Color32::WHITE,
-                    (1., Color32::BLACK),
+                let earth_pos = to_pos2(self.orbital_params.earth_pos);
+                painter.circle(earth_pos, 10., Color32::WHITE, (1., Color32::BLACK));
+
+                painter.text(
+                    earth_pos,
+                    Align2::CENTER_BOTTOM,
+                    "Earth",
+                    FontId::monospace(16.),
+                    Color32::BLACK,
                 );
 
                 painter.circle(
