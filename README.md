@@ -19,6 +19,7 @@ There are 3 models:
 * Lunar Lander
 * Missile
 * Orbital Mechanics
+* Three-body problem
 
 ### Lunar Lander
 
@@ -53,6 +54,20 @@ It is a tricky problem since moving one way will not bring you to the desired di
 * The circle with black border at the center shows the center of gravity, e.g. the Earth.
 
 ![screencapture_orbital](images/screencapture_orbital.gif)
+
+
+### Three-body problem
+
+The three-body problem is a Neutonian dynamics problem to obtain the trajectory of celestial objects motions.
+It is known to be very difficult to solve analytically.
+In fact, the bigger problem is that it is very sensitive to the small difference to the initial conditions.
+
+Automatic differentiation should be able to half-numerically solve and optimize the trajectory.
+In this application, the satellite tries to maintain the orbital distane from the moon, while in the influence of gravity from both the Earth and the Moon.
+
+![screencapture_three_body](images/three-body.gif)
+
+Well, it is difficult even for automatic differentiation.
 
 
 ## Control
