@@ -14,12 +14,13 @@ It has native GUI and WebAssembly version that can run on a browser.
 
 ![screenshot](images/screenshot.png)
 
-There are 3 models:
+There are following models:
 
 * Lunar Lander
 * Missile
 * Orbital Mechanics
 * Three-body problem
+* Kinematic Bicycle Model
 
 ### Lunar Lander
 
@@ -68,6 +69,19 @@ In this application, the satellite tries to maintain the orbital distane from th
 ![screencapture_three_body](images/three-body.gif)
 
 Well, it is difficult even for automatic differentiation.
+
+
+### Kinematic Bicycle Model
+
+The [Kinematic Bicycle Model](https://dingyan89.medium.com/simple-understanding-of-kinematic-bicycle-model-81cac6420357) is commonly used to approximate the mechanical behavior of a 4-wheeled car.
+The front wheel controls the steering, while the rear is fixed.
+It is not trivial to plan a control strategy to follow an arbitrary path, because the problem is not holonomic.
+
+We can use the loss as the distances of the path positions and the predicted states from the bicycle model and minimize it with automatic differentiation.
+
+In the animation below, purple is the target path, a red circle and a red path is the subsection of the target path at the moment, a yellow line is the predicted states at the moment, and the green line is the actual trajectory followed.
+
+![screencapture_bicycle](images/screencapture_bicycle.gif)
 
 
 ## Control

@@ -70,7 +70,11 @@ impl eframe::App for RustrolApp {
                         .changed();
                 changed = changed
                     || ui
-                        .radio_value(&mut self.app_radio, AppRadio::Bicycle, "Bicycle")
+                        .radio_value(
+                            &mut self.app_radio,
+                            AppRadio::Bicycle,
+                            "Kinematic Bicycle Model",
+                        )
                         .changed();
 
                 if changed {
