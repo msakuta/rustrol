@@ -263,7 +263,9 @@ impl BicycleApp {
                 paint_wheel(&[0., 0.], &rotation);
             };
 
-            if self.direct_control {
+            let t = self.t as usize;
+
+            let (pos, heading, steering) = if self.direct_control {
                 painter.add(PathShape::line(
                     bicycle
                         .pos_history
@@ -274,6 +276,11 @@ impl BicycleApp {
                 ));
 
                 paint_bicycle(self.bicycle.heading, self.bicycle.steering);
+                (
+                    self.bicycle.pos,
+                    self.bicycle.heading,
+                    self.bicycle.steering,
+                )
             } else {
                 painter.add(PathShape::line(
                     self.bicycle_model
@@ -289,8 +296,7 @@ impl BicycleApp {
                     (2., Color32::from_rgb(127, 0, 127)),
                 ));
 
-                let t = self.t as usize;
-                let pos = if let Some(state) = self.bicycle_model.bicycle_states.get(t) {
+                if let Some(state) = self.bicycle_model.bicycle_states.get(t) {
                     paint_bicycle(state.heading, state.steering);
 
                     painter.add(PathShape::line(
@@ -305,8 +311,8 @@ impl BicycleApp {
                     }
 
                     painter.add(PathShape::line(
-                        self.params.path[state.closest_target
-                            ..(state.closest_target + self.params.prediction_states)
+                        self.params.path[closest_target
+                            ..(closest_target + self.params.prediction_states)
                                 .min(self.params.path.len())]
                             .iter()
                             .map(|ofs| to_pos2(*ofs))
@@ -314,19 +320,27 @@ impl BicycleApp {
                         (3., Color32::from_rgb(255, 0, 0)),
                     ));
 
-                    state.pos
+                    (state.pos, state.heading, state.steering)
                 } else {
-                    Vec2::zero()
-                };
+                    (Vec2::zero(), 0., 0.)
+                }
+            };
 
-                painter.text(
-                    response.rect.left_top(),
-                    Align2::LEFT_TOP,
-                    format!("t: {t}, pos: {pos:?}"),
-                    FontId::proportional(16.),
-                    Color32::BLACK,
-                );
-            }
+            const DEG_PER_RAD: f64 = 180. / std::f64::consts::PI;
+
+            painter.text(
+                response.rect.left_top(),
+                Align2::LEFT_TOP,
+                format!(
+                    "t: {t}, pos: {:.3}, {:.3}, heading: {:.3}, steer: {:.3}",
+                    pos.x,
+                    pos.y,
+                    heading * DEG_PER_RAD,
+                    steering * DEG_PER_RAD
+                ),
+                FontId::proportional(16.),
+                Color32::BLACK,
+            );
 
             if let Some(ref err) = self.error_msg {
                 painter.text(
