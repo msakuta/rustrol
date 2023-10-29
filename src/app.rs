@@ -40,8 +40,8 @@ pub struct RustrolApp {
 impl RustrolApp {
     pub fn new() -> Self {
         Self {
-            app_radio: AppRadio::Lander,
-            app: AppSelect::Lander(LanderApp::new()),
+            app_radio: AppRadio::Bicycle,
+            app: AppSelect::Bicycle(BicycleApp::new()),
         }
     }
 }

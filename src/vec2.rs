@@ -32,6 +32,15 @@ where
     }
 }
 
+impl<T: Default> Default for Vec2<T> {
+    fn default() -> Self {
+        Self {
+            x: T::default(),
+            y: T::default(),
+        }
+    }
+}
+
 impl<T> Vec2<T>
 where
     T: Add<T, Output = T> + Mul<T, Output = T> + Clone + Copy,
