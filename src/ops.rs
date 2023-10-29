@@ -34,12 +34,14 @@ impl rustograd::UnaryFn<f64> for ClampOp {
         v.clamp(self.min, self.max)
     }
 
-    fn grad(&self, v: f64) -> f64 {
-        if v < self.min || self.max < v {
-            0.
-        } else {
-            1.
-        }
+    fn grad(&self, _v: f64) -> f64 {
+        // Technically, clamp should return 0 to the gradient outside the range, but the solution
+        // tend to get stuck into infeasible if it does.
+        // if v < self.min || self.max < v {
+        //     0.
+        // } else {
+        1.
+        // }
     }
 }
 

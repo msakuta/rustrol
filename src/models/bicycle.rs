@@ -32,11 +32,11 @@ pub enum BicyclePath {
 
 impl BicycleParams {
     fn gen_path(path: BicyclePath, len: usize) -> Vec<Vec2<f64>> {
-        const CIRCLE_PERIOD: f64 = 70.;
-        const CIRCLE_RADIUS: f64 = 100.;
+        const CIRCLE_PERIOD: f64 = 40.;
+        const CIRCLE_RADIUS: f64 = 70.;
         const NOMINAL_SPEED: f64 = 0.5;
         const SINE_PERIOD: f64 = 7.5;
-        const SINE_RADIUS: f64 = 5.;
+        const SINE_AMPLITUDE: f64 = 10.;
         const CRANK_PERIOD4: f64 = 50.;
         const CRANK_PERIOD: f64 = CRANK_PERIOD4 * 4.;
         (0..len)
@@ -50,7 +50,7 @@ impl BicycleParams {
                 }
                 BicyclePath::Sine => {
                     let phase = t as f64 / SINE_PERIOD / std::f64::consts::PI;
-                    Vec2::new(t as f64 * NOMINAL_SPEED, SINE_RADIUS * phase.sin())
+                    Vec2::new(t as f64 * NOMINAL_SPEED, SINE_AMPLITUDE * phase.sin())
                 }
                 BicyclePath::Crank => {
                     let ft = t as f64 % CRANK_PERIOD;
@@ -219,9 +219,6 @@ fn optimize(
     prev_target: usize,
     params: &BicycleParams,
 ) -> Result<(f64, f64, usize), Box<dyn Error>> {
-    // model.target.x.eval();
-    // model.target.y.eval();
-
     let closest_target = model
         .predictions
         .first()
@@ -296,7 +293,7 @@ fn simulate_step(model: &Model, _t: usize, h_thrust: f64, v_thrust: f64) -> (Vec
     let bicycle = model.predictions.first().unwrap();
     let heading = bicycle.heading.data().unwrap();
 
-    let steering = bicycle.steering.data().unwrap() + h_thrust;
+    let steering = (bicycle.steering.data().unwrap() + h_thrust).clamp(-MAX_STEERING, MAX_STEERING);
     let theta_dot = v_thrust * steering.tan() / bicycle.wheel_base.data().unwrap();
     let next_heading = heading + theta_dot;
     let direction = Vec2::new(heading.cos(), heading.sin());
