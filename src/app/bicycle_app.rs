@@ -1,17 +1,14 @@
-use std::collections::VecDeque;
-
 use eframe::{
     egui::{self, Context, Frame, Ui},
     epaint::{pos2, Color32, PathShape, Pos2, Rect},
 };
 
-use crate::vec2::Vec2;
+use crate::{
+    models::bicycle::{bicycle_simulate_step, Bicycle, MAX_STEERING, MAX_THRUST},
+    vec2::Vec2,
+};
 
 use super::SCALE;
-
-const MAX_THRUST: f64 = 0.5;
-const MAX_STEERING: f64 = std::f64::consts::PI / 4.;
-const STEERING_SPEED: f64 = std::f64::consts::PI * 0.01;
 
 pub struct BicycleApp {
     direct_control: bool,
@@ -202,55 +199,4 @@ impl BicycleApp {
             paint_wheel(&[0., 0.], &rotation);
         });
     }
-}
-
-struct Bicycle {
-    pos: Vec2<f64>,
-    heading: f64,
-    steering: f64,
-    wheel_base: f64,
-    pos_history: VecDeque<Vec2<f64>>,
-}
-
-impl Bicycle {
-    const MAX_HISTORY: usize = 1000;
-    fn new() -> Self {
-        Self {
-            pos: Vec2::zero(),
-            heading: 0.,
-            steering: 0.,
-            wheel_base: 4.,
-            pos_history: VecDeque::new(),
-        }
-    }
-
-    fn append_history(&mut self) {
-        if self
-            .pos_history
-            .back()
-            .map(|hist| *hist != self.pos)
-            .unwrap_or(true)
-        {
-            self.pos_history.push_back(self.pos);
-        }
-        if Self::MAX_HISTORY < self.pos_history.len() {
-            self.pos_history.pop_front();
-        }
-    }
-}
-
-fn bicycle_simulate_step(bicycle: &mut Bicycle, h_thrust: f64, v_thrust: f64, playback_speed: f64) {
-    let steering_speed = playback_speed * STEERING_SPEED;
-    bicycle.steering = if (bicycle.steering - h_thrust).abs() < steering_speed {
-        h_thrust
-    } else if bicycle.steering < h_thrust {
-        bicycle.steering + steering_speed
-    } else {
-        bicycle.steering - steering_speed
-    };
-    let direction = Vec2::new(bicycle.heading.cos(), -bicycle.heading.sin());
-    bicycle.pos += direction * v_thrust * playback_speed;
-
-    let theta_dot = v_thrust * bicycle.steering.tan() / bicycle.wheel_base;
-    bicycle.heading += theta_dot * playback_speed;
 }

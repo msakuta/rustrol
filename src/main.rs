@@ -2,6 +2,9 @@ mod app;
 #[macro_use]
 mod error;
 mod lander;
+mod models {
+    pub mod bicycle;
+}
 mod missile;
 mod ops;
 mod orbital;
