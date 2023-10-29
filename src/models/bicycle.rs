@@ -33,7 +33,7 @@ impl BicycleParams {
     fn gen_path(path: BicyclePath, len: usize) -> Vec<Vec2<f64>> {
         const CIRCLE_PERIOD: f64 = 70.;
         const CIRCLE_RADIUS: f64 = 100.;
-        const SINE_PERIOD: f64 = 10.;
+        const SINE_PERIOD: f64 = 7.5;
         const SINE_RADIUS: f64 = 5.;
         (0..len)
             .map(|t| match path {
@@ -64,7 +64,7 @@ impl Default for BicycleParams {
             rate: RATE,
             optim_iter: 50,
             max_iter: 200,
-            prediction_states: 30,
+            prediction_states: 15,
             path_shape,
             path: Self::gen_path(path_shape, 250),
         }
@@ -132,6 +132,7 @@ pub struct BicycleResultState {
     pub heading: f64,
     pub steering: f64,
     pub predictions: Vec<Vec2<f64>>,
+    pub closest_target: usize,
 }
 
 #[derive(Default)]
@@ -157,9 +158,11 @@ pub(crate) fn simulate_bicycle(
             .unwrap();
     }
 
+    let mut prev_target = 0;
     let bicycle_states = (0..params.max_iter)
         .map(|t| -> Result<BicycleResultState, Box<dyn Error>> {
-            let (h_thrust, v_thrust) = optimize(&model, t, params)?;
+            let (h_thrust, v_thrust, closest_target) = optimize(&model, t, prev_target, params)?;
+            prev_target = closest_target;
             // tape.dump_nodes();
             let (pos, heading) = simulate_step(&model, t, h_thrust, v_thrust);
             let first = model.predictions.first().unwrap();
@@ -172,6 +175,7 @@ pub(crate) fn simulate_bicycle(
                     .iter()
                     .map(|b1| b1.pos.map(|x| x.data().unwrap()))
                     .collect(),
+                closest_target,
             })
         })
         .collect::<Result<Vec<_>, _>>()?;
@@ -179,9 +183,40 @@ pub(crate) fn simulate_bicycle(
     Ok(BicycleResult { bicycle_states })
 }
 
-fn optimize(model: &Model, t: usize, params: &BicycleParams) -> Result<(f64, f64), Box<dyn Error>> {
+fn optimize(
+    model: &Model,
+    t: usize,
+    prev_target: usize,
+    params: &BicycleParams,
+) -> Result<(f64, f64, usize), Box<dyn Error>> {
     // model.target.x.eval();
     // model.target.y.eval();
+
+    let closest_target = model
+        .predictions
+        .first()
+        .map(|init| {
+            let pos = init.pos.map(|x| x.eval_noclear());
+            params.path[prev_target..]
+                .iter()
+                .enumerate()
+                .fold(None, |acc: Option<(usize, f64)>, cur| {
+                    let dist2 = (pos - *cur.1).length2();
+                    if let Some(acc) = acc {
+                        if dist2 < acc.1 {
+                            Some((cur.0, dist2))
+                        } else {
+                            Some(acc)
+                        }
+                    } else {
+                        Some((cur.0, dist2))
+                    }
+                })
+                .map(|(i, _)| i)
+                .unwrap_or(0)
+                + prev_target
+        })
+        .unwrap_or(0);
 
     for (i, state) in model.predictions.iter().enumerate() {
         if let Some(target) = params.path.get(t + i) {
@@ -224,7 +259,7 @@ fn optimize(model: &Model, t: usize, params: &BicycleParams) -> Result<(f64, f64
     let h_thrust = model.predictions.first().unwrap().h_thrust.data().unwrap();
     let v_thrust = model.predictions.first().unwrap().v_thrust.data().unwrap();
 
-    Ok((h_thrust, v_thrust))
+    Ok((h_thrust, v_thrust, closest_target))
 }
 
 fn simulate_step(model: &Model, _t: usize, h_thrust: f64, v_thrust: f64) -> (Vec2<f64>, f64) {

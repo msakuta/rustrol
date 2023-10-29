@@ -289,12 +289,7 @@ impl BicycleApp {
                 ));
 
                 let t = self.t as usize;
-                let pos = if let Some((state, target)) = self
-                    .bicycle_model
-                    .bicycle_states
-                    .get(t)
-                    .zip(self.params.path.get(t))
-                {
+                let pos = if let Some(state) = self.bicycle_model.bicycle_states.get(t) {
                     paint_bicycle(state.heading, state.steering);
 
                     painter.add(PathShape::line(
@@ -302,20 +297,26 @@ impl BicycleApp {
                         (2., Color32::from_rgb(127, 127, 0)),
                     ));
 
-                    painter.circle(to_pos2(*target), 5., Color32::RED, (1., Color32::BLACK));
+                    let closest_target = state.closest_target;
+
+                    if let Some(target) = self.params.path.get(closest_target) {
+                        painter.circle(to_pos2(*target), 5., Color32::RED, (1., Color32::BLACK));
+                    }
+
+                    painter.add(PathShape::line(
+                        self.params.path[state.closest_target
+                            ..(state.closest_target + self.params.prediction_states)
+                                .min(self.params.path.len())]
+                            .iter()
+                            .map(|ofs| to_pos2(*ofs))
+                            .collect(),
+                        (3., Color32::from_rgb(255, 0, 0)),
+                    ));
+
                     state.pos
                 } else {
                     Vec2::zero()
                 };
-
-                painter.add(PathShape::line(
-                    self.params.path
-                        [t..(t + self.params.prediction_states).min(self.params.path.len())]
-                        .iter()
-                        .map(|ofs| to_pos2(*ofs))
-                        .collect(),
-                    (3., Color32::from_rgb(255, 0, 0)),
-                ));
 
                 painter.text(
                     response.rect.left_top(),
