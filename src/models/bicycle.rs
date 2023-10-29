@@ -13,6 +13,12 @@ pub(crate) const MAX_STEERING: f64 = std::f64::consts::PI / 4.;
 pub(crate) const STEERING_SPEED: f64 = std::f64::consts::PI * 0.01;
 const WHEEL_BASE: f64 = 4.;
 const RATE: f64 = 1e-4;
+const TARGET_SPEED: f64 = 1.;
+const CIRCLE_RADIUS: f64 = 50.;
+const SINE_PERIOD: f64 = 80.;
+const SINE_AMPLITUDE: f64 = 10.;
+const CRANK_PERIOD4: f64 = 20.;
+const CRANK_PERIOD: f64 = CRANK_PERIOD4 * 4.;
 
 pub struct BicycleParams {
     pub rate: f64,
@@ -21,9 +27,10 @@ pub struct BicycleParams {
     pub prediction_states: usize,
     pub path: Vec<Vec2<f64>>,
     pub path_shape: BicyclePath,
+    pub path_params: PathParams,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum BicyclePath {
     Circle,
     Sine,
@@ -31,50 +38,44 @@ pub enum BicyclePath {
 }
 
 impl BicycleParams {
-    fn gen_path(path: BicyclePath, len: usize) -> Vec<Vec2<f64>> {
-        const CIRCLE_PERIOD: f64 = 40.;
-        const CIRCLE_RADIUS: f64 = 70.;
-        const NOMINAL_SPEED: f64 = 0.5;
-        const SINE_PERIOD: f64 = 7.5;
-        const SINE_AMPLITUDE: f64 = 10.;
-        const CRANK_PERIOD4: f64 = 50.;
-        const CRANK_PERIOD: f64 = CRANK_PERIOD4 * 4.;
+    fn gen_path(path: BicyclePath, path_params: &PathParams, len: usize) -> Vec<Vec2<f64>> {
+        use std::f64::consts::PI;
         (0..len)
             .map(|t| match path {
                 BicyclePath::Circle => {
-                    let phase = t as f64 / CIRCLE_PERIOD / std::f64::consts::PI;
+                    let period = 2. * PI * path_params.circle_radius / path_params.target_speed;
+                    let phase = t as f64 * 2. * PI / period;
                     Vec2::new(
-                        CIRCLE_RADIUS * phase.sin(),
-                        CIRCLE_RADIUS * (1. - phase.cos()),
+                        path_params.circle_radius * phase.sin(),
+                        path_params.circle_radius * (1. - phase.cos()),
                     )
                 }
                 BicyclePath::Sine => {
-                    let phase = t as f64 / SINE_PERIOD / std::f64::consts::PI;
-                    Vec2::new(t as f64 * NOMINAL_SPEED, SINE_AMPLITUDE * phase.sin())
+                    let phase = t as f64 / path_params.sine_period * PI * 2.;
+                    Vec2::new(
+                        t as f64 * path_params.target_speed,
+                        path_params.sine_amplitude * phase.sin(),
+                    )
                 }
                 BicyclePath::Crank => {
-                    let ft = t as f64 % CRANK_PERIOD;
-                    let x_ofs =
-                        (t as f64).div_euclid(CRANK_PERIOD) * CRANK_PERIOD4 * 2. * NOMINAL_SPEED;
-                    if ft < CRANK_PERIOD4 {
-                        Vec2::new(x_ofs + ft * NOMINAL_SPEED, 0.)
-                    } else if ft < CRANK_PERIOD4 * 2. {
+                    let period = path_params.crank_period;
+                    let speed = path_params.target_speed;
+                    let ft = t as f64 % period;
+                    let period4 = period / 4.;
+                    let x_ofs = (t as f64).div_euclid(period) * period4 * 2. * speed;
+                    if ft < period4 {
+                        Vec2::new(x_ofs + ft * speed, 0.)
+                    } else if ft < period4 * 2. {
+                        Vec2::new(x_ofs + period4 * speed, (ft - period4) * speed)
+                    } else if ft < period4 * 3. {
                         Vec2::new(
-                            x_ofs + CRANK_PERIOD4 * NOMINAL_SPEED,
-                            (ft - CRANK_PERIOD4) * NOMINAL_SPEED,
-                        )
-                    } else if ft < CRANK_PERIOD4 * 3. {
-                        Vec2::new(
-                            x_ofs
-                                + CRANK_PERIOD4 * NOMINAL_SPEED
-                                + (ft - CRANK_PERIOD4 * 2.) * NOMINAL_SPEED,
-                            CRANK_PERIOD4 * NOMINAL_SPEED,
+                            x_ofs + period4 * speed + (ft - period4 * 2.) * speed,
+                            period4 * speed,
                         )
                     } else {
                         Vec2::new(
-                            x_ofs + CRANK_PERIOD4 * NOMINAL_SPEED * 2.,
-                            CRANK_PERIOD4 * NOMINAL_SPEED
-                                - (ft - CRANK_PERIOD4 * 3.) * NOMINAL_SPEED,
+                            x_ofs + period4 * speed * 2.,
+                            period4 * speed - (ft - period4 * 3.) * speed,
                         )
                     }
                 }
@@ -83,20 +84,46 @@ impl BicycleParams {
     }
 
     pub fn reset_path(&mut self) {
-        self.path = Self::gen_path(self.path_shape, self.max_iter + self.prediction_states);
+        self.path = Self::gen_path(
+            self.path_shape,
+            &self.path_params,
+            self.max_iter + self.prediction_states,
+        );
     }
 }
 
 impl Default for BicycleParams {
     fn default() -> Self {
         let path_shape = BicyclePath::Crank;
+        let path_params = PathParams::default();
         Self {
             rate: RATE,
             optim_iter: 50,
             max_iter: 200,
             prediction_states: 15,
             path_shape,
-            path: Self::gen_path(path_shape, 250),
+            path: Self::gen_path(path_shape, &path_params, 250),
+            path_params,
+        }
+    }
+}
+
+pub struct PathParams {
+    pub target_speed: f64,
+    pub circle_radius: f64,
+    pub sine_period: f64,
+    pub sine_amplitude: f64,
+    pub crank_period: f64,
+}
+
+impl Default for PathParams {
+    fn default() -> Self {
+        Self {
+            target_speed: TARGET_SPEED,
+            circle_radius: CIRCLE_RADIUS,
+            sine_period: SINE_PERIOD,
+            sine_amplitude: SINE_AMPLITUDE,
+            crank_period: CRANK_PERIOD,
         }
     }
 }
@@ -188,11 +215,11 @@ pub(crate) fn simulate_bicycle(
             .unwrap();
     }
 
-    let mut prev_target = 0;
+    let mut prev_path_node = 0;
     let bicycle_states = (0..params.max_iter)
         .map(|t| -> Result<BicycleResultState, Box<dyn Error>> {
-            let (h_thrust, v_thrust, closest_target) = optimize(&model, t, prev_target, params)?;
-            prev_target = closest_target;
+            let (h_thrust, v_thrust, closest_path_node) = optimize(&model, prev_path_node, params)?;
+            prev_path_node = closest_path_node;
             // tape.dump_nodes();
             let (pos, heading) = simulate_step(&model, t, h_thrust, v_thrust);
             let first = model.predictions.first().unwrap();
@@ -205,7 +232,7 @@ pub(crate) fn simulate_bicycle(
                     .iter()
                     .map(|b1| b1.pos.map(|x| x.data().unwrap()))
                     .collect(),
-                closest_target,
+                closest_target: closest_path_node,
             })
         })
         .collect::<Result<Vec<_>, _>>()?;
@@ -215,16 +242,15 @@ pub(crate) fn simulate_bicycle(
 
 fn optimize(
     model: &Model,
-    t: usize,
-    prev_target: usize,
+    prev_path_node: usize,
     params: &BicycleParams,
 ) -> Result<(f64, f64, usize), Box<dyn Error>> {
-    let closest_target = model
+    let closest_path_node = model
         .predictions
         .first()
         .map(|init| {
             let pos = init.pos.map(|x| x.eval_noclear());
-            params.path[prev_target..]
+            params.path[prev_path_node..]
                 .iter()
                 .enumerate()
                 .fold(None, |acc: Option<(usize, f64)>, cur| {
@@ -241,12 +267,12 @@ fn optimize(
                 })
                 .map(|(i, _)| i)
                 .unwrap_or(0)
-                + prev_target
+                + prev_path_node
         })
         .unwrap_or(0);
 
     for (i, state) in model.predictions.iter().enumerate() {
-        if let Some(target) = params.path.get(t + i) {
+        if let Some(target) = params.path.get(closest_path_node + i) {
             state.target_pos.x.set(target.x)?;
             state.target_pos.y.set(target.y)?;
         }
@@ -286,7 +312,7 @@ fn optimize(
     let h_thrust = model.predictions.first().unwrap().h_thrust.data().unwrap();
     let v_thrust = model.predictions.first().unwrap().v_thrust.data().unwrap();
 
-    Ok((h_thrust, v_thrust, closest_target))
+    Ok((h_thrust, v_thrust, closest_path_node))
 }
 
 fn simulate_step(model: &Model, _t: usize, h_thrust: f64, v_thrust: f64) -> (Vec2<f64>, f64) {

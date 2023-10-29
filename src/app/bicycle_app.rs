@@ -118,6 +118,39 @@ impl BicycleApp {
             ui.radio_value(&mut self.params.path_shape, BicyclePath::Circle, "Circle");
             ui.radio_value(&mut self.params.path_shape, BicyclePath::Sine, "Sine");
             ui.radio_value(&mut self.params.path_shape, BicyclePath::Crank, "Crank");
+            ui.label("Target Speed:");
+            ui.add(egui::widgets::Slider::new(
+                &mut self.params.path_params.target_speed,
+                0.1..=5.0,
+            ));
+            match self.params.path_shape {
+                BicyclePath::Circle => {
+                    ui.label("Circle Radius:");
+                    ui.add(egui::widgets::Slider::new(
+                        &mut self.params.path_params.circle_radius,
+                        1f64..=100f64,
+                    ));
+                }
+                BicyclePath::Sine => {
+                    ui.label("Sine Period:");
+                    ui.add(egui::widgets::Slider::new(
+                        &mut self.params.path_params.sine_period,
+                        1f64..=500f64,
+                    ));
+                    ui.label("Sine Amplitude:");
+                    ui.add(egui::widgets::Slider::new(
+                        &mut self.params.path_params.sine_amplitude,
+                        1f64..=50f64,
+                    ));
+                }
+                BicyclePath::Crank => {
+                    ui.label("Crank Period:");
+                    ui.add(egui::widgets::Slider::new(
+                        &mut self.params.path_params.crank_period,
+                        1f64..=500f64,
+                    ));
+                }
+            }
         });
         ui.label("Max iter:");
         ui.add(egui::widgets::Slider::new(
