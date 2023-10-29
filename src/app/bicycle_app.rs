@@ -6,8 +6,8 @@ use eframe::{
 
 use crate::{
     models::bicycle::{
-        bicycle_simulate_step, simulate_bicycle, Bicycle, BicycleParams, BicycleResult,
-        MAX_STEERING, MAX_THRUST,
+        bicycle_simulate_step, simulate_bicycle, Bicycle, BicycleParams, BicyclePath,
+        BicycleResult, MAX_STEERING, MAX_THRUST,
     },
     vec2::Vec2,
 };
@@ -95,8 +95,7 @@ impl BicycleApp {
             if self.direct_control {
                 self.bicycle = Bicycle::new();
             } else {
-                self.params.path =
-                    BicycleParams::gen_path(self.params.max_iter + self.params.prediction_states);
+                self.params.reset_path();
                 (self.bicycle_model, self.error_msg) =
                     match simulate_bicycle(Vec2 { x: 0., y: 0. }, &self.params) {
                         Ok(res) => (res, None),
@@ -114,6 +113,11 @@ impl BicycleApp {
             &mut self.playback_speed,
             (0.1)..=2.,
         ));
+        ui.group(|ui| {
+            ui.label("Path shape:");
+            ui.radio_value(&mut self.params.path_shape, BicyclePath::Circle, "Circle");
+            ui.radio_value(&mut self.params.path_shape, BicyclePath::Sine, "Sine");
+        });
         ui.label("Max iter:");
         ui.add(egui::widgets::Slider::new(
             &mut self.params.max_iter,
@@ -276,7 +280,7 @@ impl BicycleApp {
                         .iter()
                         .map(|s| to_pos2(s.pos))
                         .collect(),
-                    (2., Color32::GREEN),
+                    (2., Color32::from_rgb(0, 127, 0)),
                 ));
 
                 painter.add(PathShape::line(
@@ -303,6 +307,15 @@ impl BicycleApp {
                 } else {
                     Vec2::zero()
                 };
+
+                painter.add(PathShape::line(
+                    self.params.path
+                        [t..(t + self.params.prediction_states).min(self.params.path.len())]
+                        .iter()
+                        .map(|ofs| to_pos2(*ofs))
+                        .collect(),
+                    (3., Color32::from_rgb(255, 0, 0)),
+                ));
 
                 painter.text(
                     response.rect.left_top(),

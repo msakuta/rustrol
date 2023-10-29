@@ -20,32 +20,53 @@ pub struct BicycleParams {
     pub max_iter: usize,
     pub prediction_states: usize,
     pub path: Vec<Vec2<f64>>,
+    pub path_shape: BicyclePath,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BicyclePath {
+    Circle,
+    Sine,
 }
 
 impl BicycleParams {
-    pub fn gen_path(len: usize) -> Vec<Vec2<f64>> {
+    fn gen_path(path: BicyclePath, len: usize) -> Vec<Vec2<f64>> {
         const CIRCLE_PERIOD: f64 = 70.;
         const CIRCLE_RADIUS: f64 = 100.;
+        const SINE_PERIOD: f64 = 10.;
+        const SINE_RADIUS: f64 = 5.;
         (0..len)
-            .map(|t| {
-                let phase = t as f64 / CIRCLE_PERIOD / std::f64::consts::PI;
-                Vec2::new(
-                    CIRCLE_RADIUS * phase.sin(),
-                    CIRCLE_RADIUS * (1. - phase.cos()),
-                )
+            .map(|t| match path {
+                BicyclePath::Circle => {
+                    let phase = t as f64 / CIRCLE_PERIOD / std::f64::consts::PI;
+                    Vec2::new(
+                        CIRCLE_RADIUS * phase.sin(),
+                        CIRCLE_RADIUS * (1. - phase.cos()),
+                    )
+                }
+                BicyclePath::Sine => {
+                    let phase = t as f64 / SINE_PERIOD / std::f64::consts::PI;
+                    Vec2::new(t as f64 * 0.5, SINE_RADIUS * phase.sin())
+                }
             })
             .collect()
+    }
+
+    pub fn reset_path(&mut self) {
+        self.path = Self::gen_path(self.path_shape, self.max_iter + self.prediction_states);
     }
 }
 
 impl Default for BicycleParams {
     fn default() -> Self {
+        let path_shape = BicyclePath::Circle;
         Self {
             rate: RATE,
             optim_iter: 50,
             max_iter: 200,
             prediction_states: 30,
-            path: Self::gen_path(250),
+            path_shape,
+            path: Self::gen_path(path_shape, 250),
         }
     }
 }
