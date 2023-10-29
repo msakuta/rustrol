@@ -90,11 +90,13 @@ impl BicycleApp {
     }
 
     pub fn update_panel(&mut self, ui: &mut Ui) {
-        ui.checkbox(&mut self.direct_control, "Direct control");
+        ui.checkbox(&mut self.direct_control, "Direct control (WASD keys)");
         if ui.button("Reset").clicked() {
             if self.direct_control {
                 self.bicycle = Bicycle::new();
             } else {
+                self.params.path =
+                    BicycleParams::gen_path(self.params.max_iter + self.params.prediction_states);
                 (self.bicycle_model, self.error_msg) =
                     match simulate_bicycle(Vec2 { x: 0., y: 0. }, &self.params) {
                         Ok(res) => (res, None),
@@ -115,7 +117,12 @@ impl BicycleApp {
         ui.label("Max iter:");
         ui.add(egui::widgets::Slider::new(
             &mut self.params.max_iter,
-            1..=200,
+            1..=500,
+        ));
+        ui.label("Prediction states:");
+        ui.add(egui::widgets::Slider::new(
+            &mut self.params.prediction_states,
+            1..=100,
         ));
         ui.label("Optim iter:");
         ui.add(egui::widgets::Slider::new(

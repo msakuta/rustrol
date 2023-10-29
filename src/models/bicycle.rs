@@ -6,7 +6,6 @@ use crate::{
     error::GradDoesNotExist,
     ops::{ClampOp, CosOp, SinOp, TanOp},
     vec2::Vec2,
-    xor128::Xor128,
 };
 
 pub(crate) const MAX_THRUST: f64 = 0.5;
@@ -23,24 +22,30 @@ pub struct BicycleParams {
     pub path: Vec<Vec2<f64>>,
 }
 
-impl Default for BicycleParams {
-    fn default() -> Self {
+impl BicycleParams {
+    pub fn gen_path(len: usize) -> Vec<Vec2<f64>> {
         const CIRCLE_PERIOD: f64 = 70.;
         const CIRCLE_RADIUS: f64 = 100.;
+        (0..len)
+            .map(|t| {
+                let phase = t as f64 / CIRCLE_PERIOD / std::f64::consts::PI;
+                Vec2::new(
+                    CIRCLE_RADIUS * phase.sin(),
+                    CIRCLE_RADIUS * (1. - phase.cos()),
+                )
+            })
+            .collect()
+    }
+}
+
+impl Default for BicycleParams {
+    fn default() -> Self {
         Self {
             rate: RATE,
             optim_iter: 50,
             max_iter: 200,
             prediction_states: 30,
-            path: (0..250)
-                .map(|t| {
-                    let phase = t as f64 / CIRCLE_PERIOD / std::f64::consts::PI;
-                    Vec2::new(
-                        CIRCLE_RADIUS * phase.sin(),
-                        CIRCLE_RADIUS * (1. - phase.cos()),
-                    )
-                })
-                .collect(),
+            path: Self::gen_path(250),
         }
     }
 }
@@ -131,21 +136,6 @@ pub(crate) fn simulate_bicycle(
             .unwrap();
     }
 
-    let dump_states = |model: &Model| {
-        println!("size: {}, b1: {}", tape.len(), model.predictions.len());
-        for (i, state) in model.predictions.iter().enumerate() {
-            println!(
-                "[{i}]: pos: {}, {}, steer: {}",
-                state.pos.x.eval(),
-                state.pos.y.eval(),
-                state.steering.eval()
-            );
-        }
-    };
-
-    // dump_states(&model);
-
-    // let mut rng = Xor128::new(12321);
     let bicycle_states = (0..params.max_iter)
         .map(|t| -> Result<BicycleResultState, Box<dyn Error>> {
             let (h_thrust, v_thrust) = optimize(&model, t, params)?;
@@ -165,7 +155,6 @@ pub(crate) fn simulate_bicycle(
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-    // dump_states(&model);
     Ok(BicycleResult { bicycle_states })
 }
 
