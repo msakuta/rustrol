@@ -5,7 +5,9 @@ use eframe::{
 };
 
 use crate::{
-    missile::{missile_simulate_step, simulate_missile, MissileParams, MissileState},
+    models::missile::{
+        missile_simulate_step, simulate_missile, MissileParams, MissileState, MAX_THRUST,
+    },
     vec2::Vec2,
     xor128::Xor128,
 };
@@ -226,9 +228,9 @@ impl MissileApp {
                 self.v_thrust = 0.;
                 for key in input.keys_down.iter() {
                     match key {
-                        egui::Key::A => self.h_thrust = -crate::missile::MAX_THRUST,
-                        egui::Key::D => self.h_thrust = crate::missile::MAX_THRUST,
-                        egui::Key::W => self.v_thrust = crate::missile::MAX_THRUST,
+                        egui::Key::A => self.h_thrust = -MAX_THRUST,
+                        egui::Key::D => self.h_thrust = MAX_THRUST,
+                        egui::Key::W => self.v_thrust = MAX_THRUST,
                         _ => {}
                     }
                 }

@@ -5,7 +5,9 @@ use eframe::{
 
 use super::{LANDER_LEG_OFFSET, SCALE};
 use crate::{
-    lander::{lander_simulate_step, simulate_lander, LanderModel, LanderParams, LanderState},
+    models::lander::{
+        lander_simulate_step, simulate_lander, LanderModel, LanderParams, LanderState,
+    },
     vec2::Vec2,
 };
 

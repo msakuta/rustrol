@@ -1,13 +1,13 @@
 mod app;
 #[macro_use]
 mod error;
-mod lander;
 mod models {
     pub mod bicycle;
+    pub mod lander;
+    pub mod missile;
+    pub mod orbital;
 }
-mod missile;
 mod ops;
-mod orbital;
 mod vec2;
 mod xor128;
 
