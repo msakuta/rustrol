@@ -27,14 +27,18 @@ pub struct BicycleParams {
 pub enum BicyclePath {
     Circle,
     Sine,
+    Crank,
 }
 
 impl BicycleParams {
     fn gen_path(path: BicyclePath, len: usize) -> Vec<Vec2<f64>> {
         const CIRCLE_PERIOD: f64 = 70.;
         const CIRCLE_RADIUS: f64 = 100.;
+        const NOMINAL_SPEED: f64 = 0.5;
         const SINE_PERIOD: f64 = 7.5;
         const SINE_RADIUS: f64 = 5.;
+        const CRANK_PERIOD4: f64 = 50.;
+        const CRANK_PERIOD: f64 = CRANK_PERIOD4 * 4.;
         (0..len)
             .map(|t| match path {
                 BicyclePath::Circle => {
@@ -46,7 +50,33 @@ impl BicycleParams {
                 }
                 BicyclePath::Sine => {
                     let phase = t as f64 / SINE_PERIOD / std::f64::consts::PI;
-                    Vec2::new(t as f64 * 0.5, SINE_RADIUS * phase.sin())
+                    Vec2::new(t as f64 * NOMINAL_SPEED, SINE_RADIUS * phase.sin())
+                }
+                BicyclePath::Crank => {
+                    let ft = t as f64 % CRANK_PERIOD;
+                    let x_ofs =
+                        (t as f64).div_euclid(CRANK_PERIOD) * CRANK_PERIOD4 * 2. * NOMINAL_SPEED;
+                    if ft < CRANK_PERIOD4 {
+                        Vec2::new(x_ofs + ft * NOMINAL_SPEED, 0.)
+                    } else if ft < CRANK_PERIOD4 * 2. {
+                        Vec2::new(
+                            x_ofs + CRANK_PERIOD4 * NOMINAL_SPEED,
+                            (ft - CRANK_PERIOD4) * NOMINAL_SPEED,
+                        )
+                    } else if ft < CRANK_PERIOD4 * 3. {
+                        Vec2::new(
+                            x_ofs
+                                + CRANK_PERIOD4 * NOMINAL_SPEED
+                                + (ft - CRANK_PERIOD4 * 2.) * NOMINAL_SPEED,
+                            CRANK_PERIOD4 * NOMINAL_SPEED,
+                        )
+                    } else {
+                        Vec2::new(
+                            x_ofs + CRANK_PERIOD4 * NOMINAL_SPEED * 2.,
+                            CRANK_PERIOD4 * NOMINAL_SPEED
+                                - (ft - CRANK_PERIOD4 * 3.) * NOMINAL_SPEED,
+                        )
+                    }
                 }
             })
             .collect()

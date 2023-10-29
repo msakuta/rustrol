@@ -117,6 +117,7 @@ impl BicycleApp {
             ui.label("Path shape:");
             ui.radio_value(&mut self.params.path_shape, BicyclePath::Circle, "Circle");
             ui.radio_value(&mut self.params.path_shape, BicyclePath::Sine, "Sine");
+            ui.radio_value(&mut self.params.path_shape, BicyclePath::Crank, "Crank");
         });
         ui.label("Max iter:");
         ui.add(egui::widgets::Slider::new(
