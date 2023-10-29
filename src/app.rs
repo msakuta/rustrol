@@ -1,3 +1,4 @@
+mod bicycle_app;
 mod lander_app;
 mod missile_app;
 mod orbit_app;
@@ -6,7 +7,7 @@ mod three_body_app;
 use eframe::egui::{self, Context};
 
 use self::{
-    lander_app::LanderApp, missile_app::MissileApp, orbit_app::OrbitalApp,
+    bicycle_app::BicycleApp, lander_app::LanderApp, missile_app::MissileApp, orbit_app::OrbitalApp,
     three_body_app::ThreeBodyApp,
 };
 
@@ -20,6 +21,7 @@ enum AppRadio {
     Missile,
     Orbital,
     ThreeBody,
+    Bicycle,
 }
 
 pub enum AppSelect {
@@ -27,6 +29,7 @@ pub enum AppSelect {
     Missile(MissileApp),
     Orbital(OrbitalApp),
     ThreeBody(ThreeBodyApp),
+    Bicycle(BicycleApp),
 }
 
 pub struct RustrolApp {
@@ -65,6 +68,10 @@ impl eframe::App for RustrolApp {
                     || ui
                         .radio_value(&mut self.app_radio, AppRadio::ThreeBody, "Three body")
                         .changed();
+                changed = changed
+                    || ui
+                        .radio_value(&mut self.app_radio, AppRadio::Bicycle, "Bicycle")
+                        .changed();
 
                 if changed {
                     match self.app_radio {
@@ -72,6 +79,7 @@ impl eframe::App for RustrolApp {
                         AppRadio::Missile => self.app = AppSelect::Missile(MissileApp::new()),
                         AppRadio::Orbital => self.app = AppSelect::Orbital(OrbitalApp::new()),
                         AppRadio::ThreeBody => self.app = AppSelect::ThreeBody(ThreeBodyApp::new()),
+                        AppRadio::Bicycle => self.app = AppSelect::Bicycle(BicycleApp::new()),
                     }
                 }
 
@@ -80,6 +88,7 @@ impl eframe::App for RustrolApp {
                     AppSelect::Missile(ref mut missile) => missile.update_panel(ui),
                     AppSelect::Orbital(ref mut app) => app.update_panel(ui),
                     AppSelect::ThreeBody(ref mut app) => app.update_panel(ui),
+                    AppSelect::Bicycle(ref mut app) => app.update_panel(ui),
                 });
             });
 
@@ -95,6 +104,7 @@ impl eframe::App for RustrolApp {
                 AppSelect::Missile(ref mut app) => app.paint_graph(ui),
                 AppSelect::Orbital(ref mut app) => app.paint_graph(ui),
                 AppSelect::ThreeBody(ref mut app) => app.paint_graph(ui),
+                AppSelect::Bicycle(ref mut app) => app.paint_graph(ui),
             });
 
         match self.app {
@@ -102,6 +112,7 @@ impl eframe::App for RustrolApp {
             AppSelect::Missile(ref mut app) => app.update(ctx),
             AppSelect::Orbital(ref mut app) => app.update(ctx),
             AppSelect::ThreeBody(ref mut app) => app.update(ctx),
+            AppSelect::Bicycle(ref mut app) => app.update(ctx),
         }
     }
 }

@@ -23,6 +23,15 @@ impl<T: Copy> Vec2<T> {
     }
 }
 
+impl<T> PartialEq for Vec2<T>
+where
+    T: PartialEq,
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.x.eq(&other.x) && self.y.eq(&other.y)
+    }
+}
+
 impl<T> Vec2<T>
 where
     T: Add<T, Output = T> + Mul<T, Output = T> + Clone + Copy,
