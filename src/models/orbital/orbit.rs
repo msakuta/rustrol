@@ -1,9 +1,9 @@
 use rustograd::{error::RustogradError, tape::TapeNode, Tape, TapeTerm};
 
-use crate::{error::GradDoesNotExist, ops::MinOp, orbital::optimize, vec2::Vec2};
+use crate::{error::GradDoesNotExist, ops::MinOp, vec2::Vec2};
 
 use super::{
-    model_simulate_step, simulate_step, AbstractModelState, Body, BodyModelState, Model,
+    model_simulate_step, optimize, simulate_step, AbstractModelState, Body, BodyModelState, Model,
     OrbitalBody, OrbitalParams, Vec2d, Vec2t, EARTH_POS, GM, THRUST_ACCEL,
 };
 

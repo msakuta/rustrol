@@ -10,7 +10,7 @@ use eframe::{
 };
 
 use crate::{
-    orbital::{
+    models::orbital::{
         calc_initial_moon, simulate_three_body, three_body_simulate_step, OrbitalParams,
         ThreeBodyParams, ThreeBodyResult, ThreeBodyState, GM, THREE_BODY_STATE,
     },

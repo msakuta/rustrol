@@ -23,6 +23,24 @@ impl<T: Copy> Vec2<T> {
     }
 }
 
+impl<T> PartialEq for Vec2<T>
+where
+    T: PartialEq,
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.x.eq(&other.x) && self.y.eq(&other.y)
+    }
+}
+
+impl<T: Default> Default for Vec2<T> {
+    fn default() -> Self {
+        Self {
+            x: T::default(),
+            y: T::default(),
+        }
+    }
+}
+
 impl<T> Vec2<T>
 where
     T: Add<T, Output = T> + Mul<T, Output = T> + Clone + Copy,
@@ -31,6 +49,7 @@ where
         self.x * self.x + self.y * self.y
     }
 
+    #[allow(dead_code)]
     pub fn dot(&self, rhs: Self) -> T {
         self.x * rhs.x + self.y * rhs.y
     }
@@ -55,6 +74,7 @@ impl Vec2<f64> {
         self.length2().sqrt()
     }
 
+    #[allow(dead_code)]
     pub fn normalized(&self) -> Self {
         let len = self.length();
         if len.is_subnormal() {

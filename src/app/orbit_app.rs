@@ -5,7 +5,7 @@ use eframe::{
 };
 
 use crate::{
-    orbital::{
+    models::orbital::{
         orbital_simulate_step, simulate_orbital, OrbitalParams, OrbitalResult, OrbitalState, GM,
         ORBITAL_STATE,
     },
