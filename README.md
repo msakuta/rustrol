@@ -79,7 +79,12 @@ It is not trivial to plan a control strategy to follow an arbitrary path, becaus
 
 We can use the loss as the distances of the path positions and the predicted states from the bicycle model and minimize it with automatic differentiation.
 
-In the animation below, purple is the target path, a red circle and a red path is the subsection of the target path at the moment, a yellow line is the predicted states at the moment, and the green line is the actual trajectory followed.
+In the animation below:
+
+* purple is the target path,
+* a red circle and a red path is the subsection of the target path at the moment,
+* a yellow line is the predicted states at the moment,
+* and the green line is the actual trajectory followed.
 
 ![screencapture_bicycle](images/screencapture_bicycle.gif)
 
