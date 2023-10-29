@@ -53,29 +53,29 @@ impl eframe::App for RustrolApp {
         eframe::egui::SidePanel::right("side_panel")
             .min_width(200.)
             .show(ctx, |ui| {
-                let mut changed = ui
-                    .radio_value(&mut self.app_radio, AppRadio::Lander, "Lunar Lander")
-                    .changed();
-                changed = changed
-                    || ui
+                let mut changed = false;
+                ui.group(|ui| {
+                    ui.label("Model:");
+                    changed |= ui
+                        .radio_value(&mut self.app_radio, AppRadio::Lander, "Lunar Lander")
+                        .changed();
+                    changed |= ui
                         .radio_value(&mut self.app_radio, AppRadio::Missile, "Missile")
                         .changed();
-                changed = changed
-                    || ui
+                    changed |= ui
                         .radio_value(&mut self.app_radio, AppRadio::Orbital, "Orbital")
                         .changed();
-                changed = changed
-                    || ui
+                    changed |= ui
                         .radio_value(&mut self.app_radio, AppRadio::ThreeBody, "Three body")
                         .changed();
-                changed = changed
-                    || ui
+                    changed |= ui
                         .radio_value(
                             &mut self.app_radio,
                             AppRadio::Bicycle,
                             "Kinematic Bicycle Model",
                         )
                         .changed();
+                });
 
                 if changed {
                     match self.app_radio {

@@ -89,7 +89,7 @@ impl BicycleParams {
 
 impl Default for BicycleParams {
     fn default() -> Self {
-        let path_shape = BicyclePath::Circle;
+        let path_shape = BicyclePath::Crank;
         Self {
             rate: RATE,
             optim_iter: 50,
