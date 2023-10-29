@@ -177,7 +177,7 @@ impl BicycleApp {
                 ))
             };
 
-            let from_pos2 = |pos: Pos2| {
+            let _from_pos2 = |pos: Pos2| {
                 let model_pos = from_screen.transform_pos(pos);
                 Vec2 {
                     x: ((model_pos.x - canvas_offset_x) / SCALE) as f64,

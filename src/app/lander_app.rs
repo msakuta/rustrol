@@ -21,14 +21,7 @@ pub struct LanderApp {
     lander_model: LanderModel,
     h_thrust: f64,
     v_thrust: f64,
-    temp_particles: Vec<TempParticle>,
     error_msg: Option<String>,
-}
-
-struct TempParticle {
-    pos: Vec2<f64>,
-    velo: Vec2<f64>,
-    life: f64,
 }
 
 const LANDER_STATE: LanderState = LanderState {
@@ -53,7 +46,6 @@ impl LanderApp {
             lander_model,
             h_thrust: 0.,
             v_thrust: 0.,
-            temp_particles: vec![],
             error_msg: None,
         }
     }

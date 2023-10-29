@@ -49,6 +49,7 @@ where
         self.x * self.x + self.y * self.y
     }
 
+    #[allow(dead_code)]
     pub fn dot(&self, rhs: Self) -> T {
         self.x * rhs.x + self.y * rhs.y
     }
@@ -73,6 +74,7 @@ impl Vec2<f64> {
         self.length2().sqrt()
     }
 
+    #[allow(dead_code)]
     pub fn normalized(&self) -> Self {
         let len = self.length();
         if len.is_subnormal() {
