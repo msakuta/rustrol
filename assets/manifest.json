@@ -1,6 +1,6 @@
 {
-  "name": "egui Template PWA",
-  "short_name": "egui-template-pwa",
+  "name": "rustrol PWA",
+  "short_name": "rustrol",
   "icons": [
     {
       "src": "./icon-256.png",

@@ -22,7 +22,7 @@ fn main() {
     native_options.default_theme = eframe::Theme::Light;
 
     eframe::run_native(
-        "Lander",
+        "rustrol GUI",
         native_options,
         Box::new(|_cc| Box::new(RustrolApp::new())),
     )
