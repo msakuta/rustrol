@@ -1,5 +1,9 @@
 # rustrol
 
+<p align="center">
+    <img width="128" src="assets/icon_ios_touch_192.png" alt="rustrol icon">
+</p>
+
 A control algorithm demonstration project in Rust
 
 Try it now on your browser!
