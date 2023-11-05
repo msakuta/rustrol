@@ -223,6 +223,7 @@ impl BicycleApp {
 
             let base_pos = to_pos2(bicycle_pos).to_vec2();
 
+            const GREEN: Color32 = Color32::from_rgb(0, 127, 0);
             const PURPLE: Color32 = Color32::from_rgb(127, 0, 127);
 
             if matches!(self.params.path_shape, BicyclePath::Point) {
@@ -232,32 +233,20 @@ impl BicycleApp {
                         self.params.path_params.line_segment =
                             Some([self.bicycle.pos, from_pos2(pointer_pos)]);
                         self.params.reset_path();
+                        self.bicycle.prev_path_node = 0;
                     }
                 }
-                if let Some(seg) = self.params.path_params.line_segment {
-                    let poss = [to_pos2(seg[0]), to_pos2(seg[1])];
-                    painter.line_segment(poss, (2., PURPLE));
-                    for pos in seg {
-                        painter.circle(to_pos2(pos), 5., PURPLE, (1., Color32::BLACK));
+                if !self.paused {
+                    match control_bicycle(&self.bicycle, &self.params) {
+                        Ok(state) => {
+                            self.bicycle.pos = state.pos;
+                            self.bicycle.heading = state.heading;
+                            self.bicycle.steering = state.steering;
+                            self.bicycle.predictions = state.predictions;
+                            self.bicycle.prev_path_node = state.closest_path_node;
+                        }
+                        Err(e) => eprintln!("Error: {e}"),
                     }
-                }
-                match control_bicycle(self.bicycle.pos, &self.params, self.bicycle.prev_path_node) {
-                    Ok(state) => {
-                        println!(
-                            "control_bicycle: clos: {} -> {}, pos {:?} -> {:?}, heading: {} -> {}",
-                            self.bicycle.prev_path_node,
-                            state.closest_path_node,
-                            self.bicycle.pos,
-                            state.pos,
-                            self.bicycle.heading,
-                            state.heading
-                        );
-                        self.bicycle.pos = state.pos;
-                        self.bicycle.heading = state.heading;
-                        self.bicycle.steering = state.steering;
-                        self.bicycle.prev_path_node = state.closest_path_node;
-                    }
-                    Err(e) => eprintln!("Error: {e}"),
                 }
             }
 
@@ -358,7 +347,44 @@ impl BicycleApp {
                     self.bicycle.steering,
                 )
             } else if matches!(self.params.path_shape, BicyclePath::Point) {
+                painter.add(PathShape::line(
+                    self.bicycle
+                        .predictions
+                        .iter()
+                        .map(|s| to_pos2(*s))
+                        .collect(),
+                    (2., GREEN),
+                ));
+
+                painter.add(PathShape::line(
+                    self.params.path.iter().map(|ofs| to_pos2(*ofs)).collect(),
+                    (2., PURPLE),
+                ));
+
                 paint_bicycle(self.bicycle.heading, self.bicycle.steering);
+
+                painter.add(PathShape::line(
+                    self.bicycle
+                        .predictions
+                        .iter()
+                        .map(|ofs| to_pos2(*ofs))
+                        .collect(),
+                    (2., Color32::from_rgb(127, 127, 0)),
+                ));
+
+                let closest_path_node = self.bicycle.prev_path_node;
+                let start = closest_path_node.min(self.params.path.len() - 1);
+                let end = (closest_path_node + self.params.prediction_states)
+                    .min(self.params.path.len() - 1);
+
+                painter.add(PathShape::line(
+                    self.params.path[start..end]
+                        .iter()
+                        .map(|ofs| to_pos2(*ofs))
+                        .collect(),
+                    (3., Color32::from_rgb(255, 0, 0)),
+                ));
+
                 (
                     self.bicycle.pos,
                     self.bicycle.heading,
@@ -371,7 +397,7 @@ impl BicycleApp {
                         .iter()
                         .map(|s| to_pos2(s.pos))
                         .collect(),
-                    (2., Color32::from_rgb(0, 127, 0)),
+                    (2., GREEN),
                 ));
 
                 painter.add(PathShape::line(

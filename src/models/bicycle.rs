@@ -154,6 +154,7 @@ pub(crate) struct Bicycle {
     pub steering: f64,
     pub wheel_base: f64,
     pub pos_history: VecDeque<Vec2<f64>>,
+    pub predictions: Vec<Vec2<f64>>,
     pub prev_path_node: usize,
 }
 
@@ -166,6 +167,7 @@ impl Bicycle {
             steering: 0.,
             wheel_base: WHEEL_BASE,
             pos_history: VecDeque::new(),
+            predictions: vec![],
             prev_path_node: 0,
         }
     }
@@ -263,22 +265,22 @@ pub(crate) fn simulate_bicycle(
 }
 
 pub(crate) fn control_bicycle(
-    pos: Vec2<f64>,
+    bicycle: &Bicycle,
     params: &BicycleParams,
-    prev_path_node: usize,
 ) -> Result<BicycleResultState, Box<dyn Error>> {
     let tape = Tape::new();
-    let model = get_model(&tape, pos, params);
+    let model = get_model(&tape, bicycle.pos, params);
 
-    let (h_thrust, v_thrust, closest_path_node) = optimize(&model, prev_path_node, params)?;
+    let Some(first) = model.predictions.first() else {
+        return Err("Model does not have any predictions".into());
+    };
+
+    first.heading.set(bicycle.heading).unwrap();
+    first.steering.set(bicycle.steering).unwrap();
+
+    let (h_thrust, v_thrust, closest_path_node) = optimize(&model, bicycle.prev_path_node, params)?;
     let (_pos, heading) = simulate_step(&model, 0, h_thrust, v_thrust);
-    let first = model.predictions.first().unwrap();
-    println!(
-        "Thrust: {} {} {}",
-        h_thrust,
-        first.heading.eval_noclear(),
-        heading
-    );
+    tape.clear();
     let state = BicycleResultState {
         pos: first.pos.map(|v| v.eval_noclear()),
         heading,
@@ -286,7 +288,7 @@ pub(crate) fn control_bicycle(
         predictions: model
             .predictions
             .iter()
-            .map(|b1| b1.pos.map(|x| x.data().unwrap()))
+            .map(|b1| b1.pos.map(|x| x.eval_noclear()))
             .collect(),
         closest_path_node,
     };
@@ -332,27 +334,27 @@ fn optimize(
         }
     }
 
-    let mut d_h_thrust = 0.;
-    let mut d_v_thrust = 0.;
-    let mut v_thrust = 0.;
-    let mut h_thrust = 0.;
+    // let mut d_h_thrust = 0.;
+    // let mut d_v_thrust = 0.;
+    // let mut v_thrust = 0.;
+    // let mut h_thrust = 0.;
 
     for _ in 0..params.optim_iter {
         model.loss.eval();
         model.loss.backprop().unwrap();
         for hist in model.predictions.iter().take(model.predictions.len() - 2) {
-            d_h_thrust = try_grad!(hist.h_thrust);
-            d_v_thrust = try_grad!(hist.v_thrust);
-            h_thrust = (hist.h_thrust.data().unwrap() - d_h_thrust * params.rate)
+            let d_h_thrust = try_grad!(hist.h_thrust);
+            let d_v_thrust = try_grad!(hist.v_thrust);
+            let h_thrust = (hist.h_thrust.data().unwrap() - d_h_thrust * params.rate)
                 .clamp(-STEERING_SPEED, STEERING_SPEED);
-            v_thrust =
+            let v_thrust =
                 (hist.v_thrust.data().unwrap() - d_v_thrust * params.rate).clamp(0., MAX_THRUST);
             hist.h_thrust.set(h_thrust).unwrap();
             hist.v_thrust.set(v_thrust).unwrap();
         }
     }
 
-    let loss_val = model.loss.eval_noclear();
+    // let loss_val = model.loss.eval_noclear();
     // println!(
     //     "h_thrust: {}, v_thrust: {}, d_h_thrust: {}, d_v_thrust: {}, heading: {}, loss: {}",
     //     h_thrust,
@@ -380,7 +382,9 @@ fn simulate_step(model: &Model, _t: usize, h_thrust: f64, v_thrust: f64) -> (Vec
     let oldpos = bicycle.pos.map(|x| x.data().unwrap());
     let newpos = oldpos + direction * v_thrust;
     bicycle.pos.x.set(newpos.x).unwrap();
+    bicycle.pos.x.eval();
     bicycle.pos.y.set(newpos.y).unwrap();
+    bicycle.pos.y.eval();
     bicycle.heading.set(next_heading).unwrap();
     bicycle.steering.set(steering).unwrap();
 
@@ -413,7 +417,7 @@ impl<'a> BicycleTape<'a> {
             //     x: tape.term("vx1", 0.),
             //     y: tape.term("vy1", -0.01),
             // },
-            heading: tape.term("heading", 0.1),
+            heading: tape.term("heading", 0.),
             steering: tape.term("steering", 0.1),
             wheel_base: tape.term("wheel_base", WHEEL_BASE),
             target_pos: Vec2 {
@@ -480,8 +484,13 @@ fn get_model<'a>(tape: &'a Tape<f64>, initial_pos: Vec2<f64>, params: &BicyclePa
 
     let mut bicycle1 = bicycle;
     let mut hist1 = vec![bicycle1];
-    for i in 0..params.prediction_states {
-        bicycle1.simulate_model(tape, &mut hist1, params.path[i]);
+    for (_i, pos) in params
+        .path
+        .iter()
+        .enumerate()
+        .take(params.prediction_states)
+    {
+        bicycle1.simulate_model(tape, &mut hist1, *pos);
     }
 
     let loss = hist1

@@ -1,4 +1,7 @@
-use std::ops::{Add, AddAssign, Div, Mul, Neg, Sub, SubAssign};
+use std::{
+    fmt::Display,
+    ops::{Add, AddAssign, Div, Mul, Neg, Sub, SubAssign},
+};
 
 /// A generic custom 2D vector type that can take f64 or TapeTerm as a type argument.
 /// It can be a bit confusing with `egui::Vec2` so I may rename it.
@@ -20,6 +23,12 @@ impl<T: Copy> Vec2<T> {
             x: f(self.x),
             y: f(self.y),
         }
+    }
+}
+
+impl<T: Display> Display for Vec2<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "({}, {})", self.x, self.y)
     }
 }
 
