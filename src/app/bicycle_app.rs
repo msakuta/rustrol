@@ -269,6 +269,8 @@ impl BicycleApp {
 
             const GREEN: Color32 = Color32::from_rgb(0, 127, 0);
             const PURPLE: Color32 = Color32::from_rgb(127, 0, 127);
+            const YELLOW: Color32 = Color32::from_rgb(127, 127, 0);
+            const RED: Color32 = Color32::from_rgb(255, 0, 0);
 
             if matches!(self.params.path_shape, BicyclePath::ClickedPoint) {
                 if response.clicked() {
@@ -362,6 +364,41 @@ impl BicycleApp {
                 paint_wheel(&[0., 0.], &rotation);
             };
 
+            let paint_predictions = |predictions: &[Vec2<f64>]| {
+                painter.add(PathShape::line(
+                    predictions.iter().map(|ofs| to_pos2(*ofs)).collect(),
+                    (2., YELLOW),
+                ));
+
+                for prediction in predictions {
+                    painter.circle_filled(to_pos2(*prediction), 2.0, YELLOW);
+                }
+            };
+
+            let paint_prediction_path = |closest_path_node: usize| {
+                if self.params.path.len() == 0 {
+                    return;
+                }
+
+                if let Some(target) = self.params.path.get(closest_path_node) {
+                    painter.circle(to_pos2(*target), 5., Color32::RED, (1., Color32::BLACK));
+                }
+
+                let start = closest_path_node.min(self.params.path.len() - 1);
+                let end = (closest_path_node + self.params.prediction_states)
+                    .min(self.params.path.len() - 1);
+
+                let path_predictions = &self.params.path[start..end];
+                painter.add(PathShape::line(
+                    path_predictions.iter().map(|ofs| to_pos2(*ofs)).collect(),
+                    (3., RED),
+                ));
+
+                for prediction in path_predictions {
+                    painter.circle_filled(to_pos2(*prediction), 2.0, RED);
+                }
+            };
+
             let t = self.t as usize;
 
             let (pos, heading, steering) = if self.realtime {
@@ -378,35 +415,14 @@ impl BicycleApp {
                         .iter()
                         .map(|ofs| to_pos2(*ofs))
                         .collect(),
-                    (2., Color32::GREEN),
+                    (2., GREEN),
                 ));
 
                 paint_bicycle(self.bicycle.heading, self.bicycle.steering);
 
                 if !matches!(self.params.path_shape, BicyclePath::DirectControl) {
-                    painter.add(PathShape::line(
-                        self.bicycle
-                            .predictions
-                            .iter()
-                            .map(|ofs| to_pos2(*ofs))
-                            .collect(),
-                        (2., Color32::from_rgb(127, 127, 0)),
-                    ));
-
-                    let closest_path_node = self.bicycle.prev_path_node;
-                    if 0 < self.params.path.len() {
-                        let start = closest_path_node.min(self.params.path.len() - 1);
-                        let end = (closest_path_node + self.params.prediction_states)
-                            .min(self.params.path.len() - 1);
-
-                        painter.add(PathShape::line(
-                            self.params.path[start..end]
-                                .iter()
-                                .map(|ofs| to_pos2(*ofs))
-                                .collect(),
-                            (3., Color32::from_rgb(255, 0, 0)),
-                        ));
-                    }
+                    paint_predictions(&self.bicycle.predictions);
+                    paint_prediction_path(self.bicycle.prev_path_node);
                 }
 
                 (
@@ -426,34 +442,14 @@ impl BicycleApp {
 
                 painter.add(PathShape::line(
                     self.params.path.iter().map(|ofs| to_pos2(*ofs)).collect(),
-                    (2., Color32::from_rgb(127, 0, 127)),
+                    (2., PURPLE),
                 ));
 
                 if let Some(state) = self.bicycle_result.bicycle_states.get(t) {
                     paint_bicycle(state.heading, state.steering);
 
-                    painter.add(PathShape::line(
-                        state.predictions.iter().map(|ofs| to_pos2(*ofs)).collect(),
-                        (2., Color32::from_rgb(127, 127, 0)),
-                    ));
-
-                    let closest_path_node = state.closest_path_node;
-
-                    if let Some(target) = self.params.path.get(closest_path_node) {
-                        painter.circle(to_pos2(*target), 5., Color32::RED, (1., Color32::BLACK));
-                    }
-
-                    let start = closest_path_node.min(self.params.path.len() - 1);
-                    let end = (closest_path_node + self.params.prediction_states)
-                        .min(self.params.path.len() - 1);
-
-                    painter.add(PathShape::line(
-                        self.params.path[start..end]
-                            .iter()
-                            .map(|ofs| to_pos2(*ofs))
-                            .collect(),
-                        (3., Color32::from_rgb(255, 0, 0)),
-                    ));
+                    paint_predictions(&state.predictions);
+                    paint_prediction_path(state.closest_path_node);
 
                     (state.pos, state.heading, state.steering)
                 } else {
