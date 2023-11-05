@@ -159,7 +159,7 @@ pub(crate) struct Bicycle {
     pub wheel_base: f64,
     pub pos_history: VecDeque<Vec2<f64>>,
     pub predictions: Vec<Vec2<f64>>,
-    pub prev_path_node: usize,
+    pub prev_path_node: f64,
 }
 
 impl Bicycle {
@@ -172,7 +172,7 @@ impl Bicycle {
             wheel_base: WHEEL_BASE,
             pos_history: VecDeque::new(),
             predictions: vec![],
-            prev_path_node: 0,
+            prev_path_node: 0.,
         }
     }
 
@@ -217,7 +217,7 @@ pub struct BicycleResultState {
     pub heading: f64,
     pub steering: f64,
     pub predictions: Vec<Vec2<f64>>,
-    pub closest_path_node: usize,
+    pub closest_path_node: f64,
 }
 
 /// A whole simulation result, including predictions and actual responses
@@ -244,7 +244,7 @@ pub(crate) fn simulate_bicycle(
             .unwrap();
     }
 
-    let mut prev_path_node = 0;
+    let mut prev_path_node = 0.;
     let bicycle_states = (0..params.max_iter)
         .map(|t| -> Result<BicycleResultState, Box<dyn Error>> {
             let (h_thrust, v_thrust, closest_path_node) = optimize(&model, prev_path_node, params)?;
@@ -301,46 +301,119 @@ pub(crate) fn control_bicycle(
     Ok(state)
 }
 
+fn find_closest_node(path: &[Vec2<f64>], pos: Vec2<f64>) -> f64 {
+    let closest_two =
+        path.iter()
+            .enumerate()
+            .fold([None; 2], |mut acc: [Option<(usize, f64)>; 2], cur| {
+                let dist2 = (pos - *cur.1).length2();
+                // Insertion sort up to closest 2 elements
+                if let [Some(acc0), _] = acc {
+                    if dist2 < acc0.1 {
+                        acc[1] = Some(acc0);
+                        acc[0] = Some((cur.0, dist2));
+                        return acc;
+                    }
+                }
+                if let [Some(_), None] = acc {
+                    acc[1] = Some((cur.0, dist2));
+                    return acc;
+                }
+                if let [Some(_), Some(acc1)] = acc {
+                    if dist2 < acc1.1 {
+                        acc[1] = Some((cur.0, dist2));
+                    }
+                    return acc;
+                }
+                [Some((cur.0, dist2)), None]
+            });
+
+    // We make a strong assumption that the shortest segment's ends are closest vertices of the whole path,
+    // which is not necessarily true.
+    match closest_two {
+        [Some(first), Some(second)] => {
+            if first.0 == second.0 + 1 || first.0 + 1 == second.0 {
+                let (prev, next) = if second.0 < first.0 {
+                    (second, first)
+                } else {
+                    (first, second)
+                };
+                let segment = path[next.0] - path[prev.0];
+                let segment_tangent = segment.normalized();
+                // let segment_normal = Vec2::new(segment_tangent.y, -segment_tangent.x);
+                let pos_delta = pos - path[prev.0];
+                // let segment_dist = pos_delta.dot(segment_normal).abs();
+                // let segment_dist2 = dbg!(segment_dist.powi(2));
+                let segment_s = pos_delta.dot(segment_tangent) / segment.length();
+                if 0. < segment_s && segment_s < 1. {
+                    prev.0 as f64 + segment_s
+                } else {
+                    first.0 as f64
+                }
+            } else {
+                first.0 as f64
+            }
+        }
+        [Some(first), None] => first.0 as f64,
+        _ => unreachable!(),
+    }
+}
+
+#[test]
+fn test_closest_node() {
+    let path = vec![
+        Vec2::new(0., 0.),
+        Vec2::new(5., 5.),
+        Vec2::new(10., 10.),
+        Vec2::new(15., 15.),
+    ];
+    assert!((find_closest_node(&path, Vec2::new(-5., 0.)) - 0.).abs() < 1e-6);
+    assert!((find_closest_node(&path, Vec2::new(0., 5.)) - 0.5).abs() < 1e-6);
+    assert!((find_closest_node(&path, Vec2::new(5., 10.)) - 1.5).abs() < 1e-6);
+    assert!((find_closest_node(&path, Vec2::new(15., 10.)) - 2.5).abs() < 1e-6);
+    assert!((find_closest_node(&path, Vec2::new(20., 20.)) - 3.).abs() < 1e-6);
+}
+
+pub(crate) fn interpolate_path(path: &[Vec2<f64>], s: f64) -> Option<Vec2<f64>> {
+    if path.len() == 0 {
+        return None;
+    }
+    if s <= 0. {
+        return Some(path[0]);
+    }
+    if (path.len() - 1) as f64 <= s {
+        return Some(path[path.len() - 1]);
+    }
+    let i = s as usize;
+    let (prev, next) = (path[i], path[i + 1]);
+    let segment_delta = next - prev;
+    let fr = s.rem_euclid(1.);
+    Some(prev + segment_delta * fr)
+}
+
 fn optimize(
     model: &Model,
-    prev_path_node: usize,
+    prev_path_node: f64,
     params: &BicycleParams,
-) -> Result<(f64, f64, usize), Box<dyn Error>> {
+) -> Result<(f64, f64, f64), Box<dyn Error>> {
     if model.predictions.len() <= 2 {
         return Err("Predictions need to be more than 2".into());
     }
-    let closest_path_node = if prev_path_node < params.path.len() {
-        model
+    let prev_path_node = prev_path_node as usize;
+    let closest_path_s = if prev_path_node < params.path.len() {
+        let pos = model
             .predictions
             .first()
-            .map(|init| {
-                let pos = init.pos.map(|x| x.eval_noclear());
-                params.path[prev_path_node..]
-                    .iter()
-                    .enumerate()
-                    .fold(None, |acc: Option<(usize, f64)>, cur| {
-                        let dist2 = (pos - *cur.1).length2();
-                        if let Some(acc) = acc {
-                            if dist2 < acc.1 {
-                                Some((cur.0, dist2))
-                            } else {
-                                Some(acc)
-                            }
-                        } else {
-                            Some((cur.0, dist2))
-                        }
-                    })
-                    .map(|(i, _)| i)
-                    .unwrap_or(0)
-                    + prev_path_node
-            })
-            .unwrap_or(0)
+            .unwrap()
+            .pos
+            .map(|x| x.eval_noclear());
+        find_closest_node(&params.path[prev_path_node..], pos) + prev_path_node as f64
     } else {
-        params.path.len() - 1
+        (params.path.len() - 1) as f64
     };
 
     for (i, state) in model.predictions.iter().enumerate() {
-        if let Some(target) = params.path.get(closest_path_node + i) {
+        if let Some(target) = interpolate_path(&params.path, closest_path_s + i as f64) {
             state.target_pos.x.set(target.x)?;
             state.target_pos.y.set(target.y)?;
         }
@@ -380,7 +453,7 @@ fn optimize(
     let h_thrust = model.predictions.first().unwrap().h_thrust.eval_noclear();
     let v_thrust = model.predictions.first().unwrap().v_thrust.eval_noclear();
 
-    Ok((h_thrust, v_thrust, closest_path_node))
+    Ok((h_thrust, v_thrust, closest_path_s))
 }
 
 fn simulate_step(model: &Model, _t: usize, h_thrust: f64, v_thrust: f64) -> (Vec2<f64>, f64) {
@@ -417,8 +490,8 @@ struct BicycleTape<'a> {
 impl<'a> BicycleTape<'a> {
     fn new(tape: &'a Tape, initial_pos: Vec2<f64>) -> Self {
         Self {
-            h_thrust: tape.term("h_thrust", 0.01),
-            v_thrust: tape.term("v_thrust", 0.01),
+            h_thrust: tape.term("h_thrust", 0.0),
+            v_thrust: tape.term("v_thrust", MAX_THRUST),
             pos: Vec2 {
                 x: tape.term("x1", initial_pos.x),
                 y: tape.term("y1", initial_pos.y),

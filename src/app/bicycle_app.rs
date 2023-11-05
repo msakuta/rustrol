@@ -6,8 +6,8 @@ use eframe::{
 
 use crate::{
     models::bicycle::{
-        bicycle_simulate_step, control_bicycle, simulate_bicycle, Bicycle, BicycleParams,
-        BicyclePath, BicycleResult, MAX_STEERING, MAX_THRUST,
+        bicycle_simulate_step, control_bicycle, interpolate_path, simulate_bicycle, Bicycle,
+        BicycleParams, BicyclePath, BicycleResult, MAX_STEERING, MAX_THRUST,
     },
     vec2::Vec2,
 };
@@ -281,7 +281,7 @@ impl BicycleApp {
                             .path_waypoints
                             .push(from_pos2(pointer_pos));
                         self.params.reset_path();
-                        self.bicycle.prev_path_node = 0;
+                        self.bicycle.prev_path_node = 0.;
                     }
                 }
             }
@@ -375,27 +375,29 @@ impl BicycleApp {
                 }
             };
 
-            let paint_prediction_path = |closest_path_node: usize| {
+            let paint_prediction_path = |closest_path_s: f64| {
                 if self.params.path.len() == 0 {
                     return;
                 }
 
-                if let Some(target) = self.params.path.get(closest_path_node) {
-                    painter.circle(to_pos2(*target), 5., Color32::RED, (1., Color32::BLACK));
+                if let Some(target) = interpolate_path(&self.params.path, closest_path_s) {
+                    painter.circle(to_pos2(target), 5., Color32::RED, (1., Color32::BLACK));
                 }
+
+                let closest_path_node = closest_path_s as usize;
 
                 let start = closest_path_node.min(self.params.path.len() - 1);
                 let end = (closest_path_node + self.params.prediction_states)
                     .min(self.params.path.len() - 1);
 
-                let path_predictions = &self.params.path[start..end];
-                painter.add(PathShape::line(
-                    path_predictions.iter().map(|ofs| to_pos2(*ofs)).collect(),
-                    (3., RED),
-                ));
+                let path_predictions: Vec<_> = (0..self.params.prediction_states)
+                    .filter_map(|i| interpolate_path(&self.params.path, closest_path_s + i as f64))
+                    .map(to_pos2)
+                    .collect();
+                painter.add(PathShape::line(path_predictions.clone(), (3., RED)));
 
                 for prediction in path_predictions {
-                    painter.circle_filled(to_pos2(*prediction), 2.0, RED);
+                    painter.circle_filled(prediction, 2.0, RED);
                 }
             };
 
