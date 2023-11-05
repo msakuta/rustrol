@@ -15,10 +15,10 @@ use crate::{
 use super::SCALE;
 
 pub struct BicycleApp {
-    direct_control: bool,
+    realtime: bool,
     paused: bool,
     bicycle: Bicycle,
-    bicycle_model: BicycleResult,
+    bicycle_result: BicycleResult,
     view_offset: Pos2,
     t: f64,
     playback_speed: f64,
@@ -31,19 +31,18 @@ pub struct BicycleApp {
 impl BicycleApp {
     pub fn new() -> Self {
         let params = BicycleParams::default();
-        let (bicycle_model, error_msg) = match simulate_bicycle(Vec2 { x: 0., y: 0. }, &params) {
+        let (bicycle_result, error_msg) = match simulate_bicycle(Vec2 { x: 0., y: 0. }, &params) {
             Ok(res) => (res, None),
             Err(e) => {
                 eprintln!("bicycle_model error: {e:?}");
                 (BicycleResult::default(), Some(e.to_string()))
             }
         };
-        println!("bicycle_model: {}", bicycle_model.bicycle_states.len());
         Self {
-            direct_control: false,
+            realtime: false,
             paused: false,
             bicycle: Bicycle::new(),
-            bicycle_model,
+            bicycle_result,
             view_offset: Pos2::ZERO,
             t: 0.,
             playback_speed: 0.5,
@@ -55,7 +54,7 @@ impl BicycleApp {
     }
 
     pub fn update(&mut self, ctx: &Context) {
-        if self.direct_control {
+        if self.realtime {
             ctx.input(|input| {
                 self.h_thrust = 0.;
                 self.v_thrust = 0.;
@@ -71,52 +70,45 @@ impl BicycleApp {
             });
 
             if !self.paused {
-                bicycle_simulate_step(
-                    &mut self.bicycle,
-                    self.h_thrust,
-                    self.v_thrust,
-                    self.playback_speed as f64,
-                );
+                if matches!(self.params.path_shape, BicyclePath::DirectControl) {
+                    bicycle_simulate_step(
+                        &mut self.bicycle,
+                        self.h_thrust,
+                        self.v_thrust,
+                        self.playback_speed as f64,
+                    );
+                } else {
+                    match control_bicycle(&self.bicycle, &self.params) {
+                        Ok(state) => {
+                            self.bicycle.pos = state.pos;
+                            self.bicycle.heading = state.heading;
+                            self.bicycle.steering = state.steering;
+                            self.bicycle.predictions = state.predictions;
+                            self.bicycle.prev_path_node = state.closest_path_node;
+                        }
+                        Err(e) => eprintln!("Error: {e}"),
+                    }
+                }
                 self.bicycle.append_history();
             }
         }
 
         if !self.paused {
-            if matches!(self.params.path_shape, BicyclePath::Point) {
-                match control_bicycle(&self.bicycle, &self.params) {
-                    Ok(state) => {
-                        self.bicycle.pos = state.pos;
-                        self.bicycle.heading = state.heading;
-                        self.bicycle.steering = state.steering;
-                        self.bicycle.predictions = state.predictions;
-                        self.bicycle.prev_path_node = state.closest_path_node;
-                    }
-                    Err(e) => eprintln!("Error: {e}"),
-                }
-            } else {
-                self.t += self.playback_speed;
-                if self.bicycle_model.bicycle_states.len() <= self.t as usize {
-                    self.t = 0.;
-                }
+            self.t += self.playback_speed;
+            if self.bicycle_result.bicycle_states.len() <= self.t as usize {
+                self.t = 0.;
             }
         }
     }
 
     pub fn update_panel(&mut self, ui: &mut Ui) {
-        ui.checkbox(&mut self.direct_control, "Direct control (WASD keys)");
+        ui.checkbox(&mut self.realtime, "Realtime");
+        let mut reset_path = false;
         if ui.button("Reset").clicked() {
-            if self.direct_control {
+            reset_path = true;
+            // Reset button not only resets the path but also the current state of the vehicle
+            if self.realtime {
                 self.bicycle = Bicycle::new();
-            } else {
-                self.params.reset_path();
-                (self.bicycle_model, self.error_msg) =
-                    match simulate_bicycle(Vec2 { x: 0., y: 0. }, &self.params) {
-                        Ok(res) => (res, None),
-                        Err(e) => {
-                            eprintln!("bicycle_model error: {e:?}");
-                            (BicycleResult::default(), Some(e.to_string()))
-                        }
-                    };
             }
             self.t = 0.;
         }
@@ -128,10 +120,31 @@ impl BicycleApp {
         ));
         ui.group(|ui| {
             ui.label("Path shape:");
-            ui.radio_value(&mut self.params.path_shape, BicyclePath::Circle, "Circle");
-            ui.radio_value(&mut self.params.path_shape, BicyclePath::Sine, "Sine");
-            ui.radio_value(&mut self.params.path_shape, BicyclePath::Crank, "Crank");
-            ui.radio_value(&mut self.params.path_shape, BicyclePath::Point, "Point");
+            ui.add_enabled_ui(self.realtime, |ui| {
+                reset_path |= ui
+                    .radio_value(
+                        &mut self.params.path_shape,
+                        BicyclePath::DirectControl,
+                        "Direct control (WASD keys)",
+                    )
+                    .changed();
+                reset_path |= ui
+                    .radio_value(
+                        &mut self.params.path_shape,
+                        BicyclePath::ClickedPoint,
+                        "Clicked Point",
+                    )
+                    .changed();
+            });
+            reset_path |= ui
+                .radio_value(&mut self.params.path_shape, BicyclePath::Circle, "Circle")
+                .changed();
+            reset_path |= ui
+                .radio_value(&mut self.params.path_shape, BicyclePath::Sine, "Sine")
+                .changed();
+            reset_path |= ui
+                .radio_value(&mut self.params.path_shape, BicyclePath::Crank, "Crank")
+                .changed();
             ui.label("Target Speed:");
             ui.add(egui::widgets::Slider::new(
                 &mut self.params.path_params.target_speed,
@@ -164,9 +177,25 @@ impl BicycleApp {
                         1f64..=500f64,
                     ));
                 }
-                BicyclePath::Point => {}
+                _ => {}
             }
         });
+
+        if reset_path {
+            self.params.reset_path();
+            if !self.realtime {
+                (self.bicycle_result, self.error_msg) =
+                    match simulate_bicycle(Vec2 { x: 0., y: 0. }, &self.params) {
+                        Ok(res) => (res, None),
+                        Err(e) => {
+                            eprintln!("bicycle_model error: {e:?}");
+                            (BicycleResult::default(), Some(e.to_string()))
+                        }
+                    };
+                self.t = 0.;
+            }
+        }
+
         ui.label("Max iter:");
         ui.add(egui::widgets::Slider::new(
             &mut self.params.max_iter,
@@ -201,17 +230,16 @@ impl BicycleApp {
             let from_screen = to_screen.inverse();
 
             let bicycle = &self.bicycle;
-            let bicycle_pos =
-                if !self.direct_control && !matches!(self.params.path_shape, BicyclePath::Point) {
-                    let t = self.t as usize;
-                    if let Some(state) = self.bicycle_model.bicycle_states.get(t) {
-                        state.pos
-                    } else {
-                        bicycle.pos
-                    }
+            let bicycle_pos = if !self.realtime {
+                let t = self.t as usize;
+                if let Some(state) = self.bicycle_result.bicycle_states.get(t) {
+                    state.pos
                 } else {
                     bicycle.pos
-                };
+                }
+            } else {
+                bicycle.pos
+            };
             let view_delta = eframe::emath::vec2(bicycle_pos.x as f32, -bicycle_pos.y as f32)
                 * SCALE
                 - self.view_offset.to_vec2();
@@ -239,7 +267,7 @@ impl BicycleApp {
             const GREEN: Color32 = Color32::from_rgb(0, 127, 0);
             const PURPLE: Color32 = Color32::from_rgb(127, 0, 127);
 
-            if matches!(self.params.path_shape, BicyclePath::Point) {
+            if matches!(self.params.path_shape, BicyclePath::ClickedPoint) {
                 if response.clicked() {
                     println!("Clicked {:?}", response.interact_pointer_pos());
                     if let Some(pointer_pos) = response.interact_pointer_pos() {
@@ -331,7 +359,14 @@ impl BicycleApp {
 
             let t = self.t as usize;
 
-            let (pos, heading, steering) = if self.direct_control {
+            let (pos, heading, steering) = if self.realtime {
+                if !matches!(self.params.path_shape, BicyclePath::DirectControl) {
+                    painter.add(PathShape::line(
+                        self.params.path.iter().map(|ofs| to_pos2(*ofs)).collect(),
+                        (2., PURPLE),
+                    ));
+                }
+
                 painter.add(PathShape::line(
                     bicycle
                         .pos_history
@@ -342,49 +377,32 @@ impl BicycleApp {
                 ));
 
                 paint_bicycle(self.bicycle.heading, self.bicycle.steering);
-                (
-                    self.bicycle.pos,
-                    self.bicycle.heading,
-                    self.bicycle.steering,
-                )
-            } else if matches!(self.params.path_shape, BicyclePath::Point) {
-                painter.add(PathShape::line(
-                    self.bicycle
-                        .predictions
-                        .iter()
-                        .map(|s| to_pos2(*s))
-                        .collect(),
-                    (2., GREEN),
-                ));
 
-                painter.add(PathShape::line(
-                    self.params.path.iter().map(|ofs| to_pos2(*ofs)).collect(),
-                    (2., PURPLE),
-                ));
+                if !matches!(self.params.path_shape, BicyclePath::DirectControl) {
+                    painter.add(PathShape::line(
+                        self.bicycle
+                            .predictions
+                            .iter()
+                            .map(|ofs| to_pos2(*ofs))
+                            .collect(),
+                        (2., Color32::from_rgb(127, 127, 0)),
+                    ));
 
-                paint_bicycle(self.bicycle.heading, self.bicycle.steering);
+                    let closest_path_node = self.bicycle.prev_path_node;
+                    if 0 < self.params.path.len() {
+                        let start = closest_path_node.min(self.params.path.len() - 1);
+                        let end = (closest_path_node + self.params.prediction_states)
+                            .min(self.params.path.len() - 1);
 
-                painter.add(PathShape::line(
-                    self.bicycle
-                        .predictions
-                        .iter()
-                        .map(|ofs| to_pos2(*ofs))
-                        .collect(),
-                    (2., Color32::from_rgb(127, 127, 0)),
-                ));
-
-                let closest_path_node = self.bicycle.prev_path_node;
-                let start = closest_path_node.min(self.params.path.len() - 1);
-                let end = (closest_path_node + self.params.prediction_states)
-                    .min(self.params.path.len() - 1);
-
-                painter.add(PathShape::line(
-                    self.params.path[start..end]
-                        .iter()
-                        .map(|ofs| to_pos2(*ofs))
-                        .collect(),
-                    (3., Color32::from_rgb(255, 0, 0)),
-                ));
+                        painter.add(PathShape::line(
+                            self.params.path[start..end]
+                                .iter()
+                                .map(|ofs| to_pos2(*ofs))
+                                .collect(),
+                            (3., Color32::from_rgb(255, 0, 0)),
+                        ));
+                    }
+                }
 
                 (
                     self.bicycle.pos,
@@ -393,7 +411,7 @@ impl BicycleApp {
                 )
             } else {
                 painter.add(PathShape::line(
-                    self.bicycle_model
+                    self.bicycle_result
                         .bicycle_states
                         .iter()
                         .map(|s| to_pos2(s.pos))
@@ -406,7 +424,7 @@ impl BicycleApp {
                     (2., Color32::from_rgb(127, 0, 127)),
                 ));
 
-                if let Some(state) = self.bicycle_model.bicycle_states.get(t) {
+                if let Some(state) = self.bicycle_result.bicycle_states.get(t) {
                     paint_bicycle(state.heading, state.steering);
 
                     painter.add(PathShape::line(

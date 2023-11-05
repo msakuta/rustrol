@@ -32,15 +32,19 @@ pub struct BicycleParams {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum BicyclePath {
+    DirectControl,
+    ClickedPoint,
     Circle,
     Sine,
     Crank,
-    Point,
 }
 
 impl BicycleParams {
     fn gen_path(path: BicyclePath, path_params: &PathParams, len: usize) -> Vec<Vec2<f64>> {
         use std::f64::consts::PI;
+        if matches!(path, BicyclePath::DirectControl) {
+            return vec![];
+        }
         (0..len)
             .map(|t| match path {
                 BicyclePath::Circle => {
@@ -80,7 +84,7 @@ impl BicycleParams {
                         )
                     }
                 }
-                BicyclePath::Point => {
+                BicyclePath::ClickedPoint | BicyclePath::DirectControl => {
                     unreachable!()
                 }
             })
@@ -88,7 +92,7 @@ impl BicycleParams {
     }
 
     pub fn reset_path(&mut self) {
-        if let BicyclePath::Point = self.path_shape {
+        if let BicyclePath::ClickedPoint = self.path_shape {
             if let Some(seg) = self.path_params.line_segment {
                 let delta = seg[1] - seg[0];
                 let length = delta.length();
@@ -216,6 +220,7 @@ pub struct BicycleResultState {
     pub closest_path_node: usize,
 }
 
+/// A whole simulation result, including predictions and actual responses
 #[derive(Default)]
 pub struct BicycleResult {
     pub bicycle_states: Vec<BicycleResultState>,
@@ -301,31 +306,38 @@ fn optimize(
     prev_path_node: usize,
     params: &BicycleParams,
 ) -> Result<(f64, f64, usize), Box<dyn Error>> {
-    let closest_path_node = model
-        .predictions
-        .first()
-        .map(|init| {
-            let pos = init.pos.map(|x| x.eval_noclear());
-            params.path[prev_path_node..]
-                .iter()
-                .enumerate()
-                .fold(None, |acc: Option<(usize, f64)>, cur| {
-                    let dist2 = (pos - *cur.1).length2();
-                    if let Some(acc) = acc {
-                        if dist2 < acc.1 {
-                            Some((cur.0, dist2))
+    if model.predictions.len() <= 2 {
+        return Err("Predictions need to be more than 2".into());
+    }
+    let closest_path_node = if prev_path_node < params.path.len() {
+        model
+            .predictions
+            .first()
+            .map(|init| {
+                let pos = init.pos.map(|x| x.eval_noclear());
+                params.path[prev_path_node..]
+                    .iter()
+                    .enumerate()
+                    .fold(None, |acc: Option<(usize, f64)>, cur| {
+                        let dist2 = (pos - *cur.1).length2();
+                        if let Some(acc) = acc {
+                            if dist2 < acc.1 {
+                                Some((cur.0, dist2))
+                            } else {
+                                Some(acc)
+                            }
                         } else {
-                            Some(acc)
+                            Some((cur.0, dist2))
                         }
-                    } else {
-                        Some((cur.0, dist2))
-                    }
-                })
-                .map(|(i, _)| i)
-                .unwrap_or(0)
-                + prev_path_node
-        })
-        .unwrap_or(0);
+                    })
+                    .map(|(i, _)| i)
+                    .unwrap_or(0)
+                    + prev_path_node
+            })
+            .unwrap_or(0)
+    } else {
+        0
+    };
 
     for (i, state) in model.predictions.iter().enumerate() {
         if let Some(target) = params.path.get(closest_path_node + i) {
