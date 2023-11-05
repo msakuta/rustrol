@@ -6,8 +6,8 @@ use eframe::{
 
 use crate::{
     models::bicycle::{
-        bicycle_simulate_step, simulate_bicycle, Bicycle, BicycleParams, BicyclePath,
-        BicycleResult, MAX_STEERING, MAX_THRUST,
+        bicycle_simulate_step, control_bicycle, simulate_bicycle, Bicycle, BicycleParams,
+        BicyclePath, BicycleResult, MAX_STEERING, MAX_THRUST,
     },
     vec2::Vec2,
 };
@@ -118,6 +118,7 @@ impl BicycleApp {
             ui.radio_value(&mut self.params.path_shape, BicyclePath::Circle, "Circle");
             ui.radio_value(&mut self.params.path_shape, BicyclePath::Sine, "Sine");
             ui.radio_value(&mut self.params.path_shape, BicyclePath::Crank, "Crank");
+            ui.radio_value(&mut self.params.path_shape, BicyclePath::Point, "Point");
             ui.label("Target Speed:");
             ui.add(egui::widgets::Slider::new(
                 &mut self.params.path_params.target_speed,
@@ -150,6 +151,7 @@ impl BicycleApp {
                         1f64..=500f64,
                     ));
                 }
+                BicyclePath::Point => {}
             }
         });
         ui.label("Max iter:");
@@ -186,16 +188,17 @@ impl BicycleApp {
             let from_screen = to_screen.inverse();
 
             let bicycle = &self.bicycle;
-            let bicycle_pos = if !self.direct_control {
-                let t = self.t as usize;
-                if let Some(state) = self.bicycle_model.bicycle_states.get(t) {
-                    state.pos
+            let bicycle_pos =
+                if !self.direct_control && !matches!(self.params.path_shape, BicyclePath::Point) {
+                    let t = self.t as usize;
+                    if let Some(state) = self.bicycle_model.bicycle_states.get(t) {
+                        state.pos
+                    } else {
+                        bicycle.pos
+                    }
                 } else {
                     bicycle.pos
-                }
-            } else {
-                bicycle.pos
-            };
+                };
             let view_delta = eframe::emath::vec2(bicycle_pos.x as f32, -bicycle_pos.y as f32)
                 * SCALE
                 - self.view_offset.to_vec2();
@@ -210,7 +213,7 @@ impl BicycleApp {
                 ))
             };
 
-            let _from_pos2 = |pos: Pos2| {
+            let from_pos2 = |pos: Pos2| {
                 let model_pos = from_screen.transform_pos(pos);
                 Vec2 {
                     x: ((model_pos.x - canvas_offset_x) / SCALE) as f64,
@@ -219,6 +222,46 @@ impl BicycleApp {
             };
 
             let base_pos = to_pos2(bicycle_pos).to_vec2();
+
+            const PURPLE: Color32 = Color32::from_rgb(127, 0, 127);
+
+            if matches!(self.params.path_shape, BicyclePath::Point) {
+                if response.clicked() {
+                    println!("Clicked {:?}", response.interact_pointer_pos());
+                    if let Some(pointer_pos) = response.interact_pointer_pos() {
+                        self.params.path_params.line_segment =
+                            Some([self.bicycle.pos, from_pos2(pointer_pos)]);
+                        self.params.reset_path();
+                    }
+                }
+                if let Some(seg) = self.params.path_params.line_segment {
+                    let poss = [to_pos2(seg[0]), to_pos2(seg[1])];
+                    painter.line_segment(poss, (2., PURPLE));
+                    for pos in seg {
+                        painter.circle(to_pos2(pos), 5., PURPLE, (1., Color32::BLACK));
+                    }
+                }
+                match control_bicycle(self.bicycle.pos, &self.params, self.bicycle.prev_path_node) {
+                    Ok(state) => {
+                        println!(
+                            "control_bicycle: clos: {} -> {}, pos {:?} -> {:?}, heading: {} -> {}",
+                            self.bicycle.prev_path_node,
+                            state.closest_path_node,
+                            self.bicycle.pos,
+                            state.pos,
+                            self.bicycle.heading,
+                            state.heading
+                        );
+                        self.bicycle.pos = state.pos;
+                        self.bicycle.heading = state.heading;
+                        self.bicycle.steering = state.steering;
+                        self.bicycle.prev_path_node = state.closest_path_node;
+                    }
+                    Err(e) => eprintln!("Error: {e}"),
+                }
+            }
+
+            let bicycle = &self.bicycle;
 
             const GRID_SIZE: f64 = 10.;
             for i in -10..10 {
@@ -314,6 +357,13 @@ impl BicycleApp {
                     self.bicycle.heading,
                     self.bicycle.steering,
                 )
+            } else if matches!(self.params.path_shape, BicyclePath::Point) {
+                paint_bicycle(self.bicycle.heading, self.bicycle.steering);
+                (
+                    self.bicycle.pos,
+                    self.bicycle.heading,
+                    self.bicycle.steering,
+                )
             } else {
                 painter.add(PathShape::line(
                     self.bicycle_model
@@ -337,16 +387,18 @@ impl BicycleApp {
                         (2., Color32::from_rgb(127, 127, 0)),
                     ));
 
-                    let closest_target = state.closest_target;
+                    let closest_path_node = state.closest_path_node;
 
-                    if let Some(target) = self.params.path.get(closest_target) {
+                    if let Some(target) = self.params.path.get(closest_path_node) {
                         painter.circle(to_pos2(*target), 5., Color32::RED, (1., Color32::BLACK));
                     }
 
+                    let start = closest_path_node.min(self.params.path.len() - 1);
+                    let end = (closest_path_node + self.params.prediction_states)
+                        .min(self.params.path.len() - 1);
+
                     painter.add(PathShape::line(
-                        self.params.path[closest_target
-                            ..(closest_target + self.params.prediction_states)
-                                .min(self.params.path.len())]
+                        self.params.path[start..end]
                             .iter()
                             .map(|ofs| to_pos2(*ofs))
                             .collect(),

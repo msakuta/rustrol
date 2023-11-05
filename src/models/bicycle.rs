@@ -35,6 +35,7 @@ pub enum BicyclePath {
     Circle,
     Sine,
     Crank,
+    Point,
 }
 
 impl BicycleParams {
@@ -79,11 +80,28 @@ impl BicycleParams {
                         )
                     }
                 }
+                BicyclePath::Point => {
+                    unreachable!()
+                }
             })
             .collect()
     }
 
     pub fn reset_path(&mut self) {
+        if let BicyclePath::Point = self.path_shape {
+            if let Some(seg) = self.path_params.line_segment {
+                let delta = seg[1] - seg[0];
+                let length = delta.length();
+                let len = length as usize / 2;
+                self.path = (0..len)
+                    .map(|i| {
+                        let f = i as f64 / len as f64;
+                        seg[1] * f + seg[0] * (1. - f)
+                    })
+                    .collect();
+            }
+            return;
+        }
         self.path = Self::gen_path(
             self.path_shape,
             &self.path_params,
@@ -114,6 +132,7 @@ pub struct PathParams {
     pub sine_period: f64,
     pub sine_amplitude: f64,
     pub crank_period: f64,
+    pub line_segment: Option<[Vec2<f64>; 2]>,
 }
 
 impl Default for PathParams {
@@ -124,6 +143,7 @@ impl Default for PathParams {
             sine_period: SINE_PERIOD,
             sine_amplitude: SINE_AMPLITUDE,
             crank_period: CRANK_PERIOD,
+            line_segment: None,
         }
     }
 }
@@ -134,6 +154,7 @@ pub(crate) struct Bicycle {
     pub steering: f64,
     pub wheel_base: f64,
     pub pos_history: VecDeque<Vec2<f64>>,
+    pub prev_path_node: usize,
 }
 
 impl Bicycle {
@@ -145,6 +166,7 @@ impl Bicycle {
             steering: 0.,
             wheel_base: WHEEL_BASE,
             pos_history: VecDeque::new(),
+            prev_path_node: 0,
         }
     }
 
@@ -189,7 +211,7 @@ pub struct BicycleResultState {
     pub heading: f64,
     pub steering: f64,
     pub predictions: Vec<Vec2<f64>>,
-    pub closest_target: usize,
+    pub closest_path_node: usize,
 }
 
 #[derive(Default)]
@@ -226,18 +248,50 @@ pub(crate) fn simulate_bicycle(
             Ok(BicycleResultState {
                 pos,
                 heading,
-                steering: first.steering.data().unwrap(),
+                steering: first.steering.eval_noclear(),
                 predictions: model
                     .predictions
                     .iter()
-                    .map(|b1| b1.pos.map(|x| x.data().unwrap()))
+                    .map(|b1| b1.pos.map(|x| x.eval_noclear()))
                     .collect(),
-                closest_target: closest_path_node,
+                closest_path_node,
             })
         })
         .collect::<Result<Vec<_>, _>>()?;
 
     Ok(BicycleResult { bicycle_states })
+}
+
+pub(crate) fn control_bicycle(
+    pos: Vec2<f64>,
+    params: &BicycleParams,
+    prev_path_node: usize,
+) -> Result<BicycleResultState, Box<dyn Error>> {
+    let tape = Tape::new();
+    let model = get_model(&tape, pos, params);
+
+    let (h_thrust, v_thrust, closest_path_node) = optimize(&model, prev_path_node, params)?;
+    let (_pos, heading) = simulate_step(&model, 0, h_thrust, v_thrust);
+    let first = model.predictions.first().unwrap();
+    println!(
+        "Thrust: {} {} {}",
+        h_thrust,
+        first.heading.eval_noclear(),
+        heading
+    );
+    let state = BicycleResultState {
+        pos: first.pos.map(|v| v.eval_noclear()),
+        heading,
+        steering: first.steering.eval_noclear(),
+        predictions: model
+            .predictions
+            .iter()
+            .map(|b1| b1.pos.map(|x| x.data().unwrap()))
+            .collect(),
+        closest_path_node,
+    };
+
+    Ok(state)
 }
 
 fn optimize(
@@ -299,18 +353,18 @@ fn optimize(
     }
 
     let loss_val = model.loss.eval_noclear();
-    println!(
-        "h_thrust: {}, v_thrust: {}, d_h_thrust: {}, d_v_thrust: {}, heading: {}, loss: {}",
-        h_thrust,
-        v_thrust,
-        d_h_thrust,
-        d_v_thrust,
-        model.predictions.first().unwrap().heading.eval_noclear(),
-        loss_val
-    );
+    // println!(
+    //     "h_thrust: {}, v_thrust: {}, d_h_thrust: {}, d_v_thrust: {}, heading: {}, loss: {}",
+    //     h_thrust,
+    //     v_thrust,
+    //     d_h_thrust,
+    //     d_v_thrust,
+    //     model.predictions.first().unwrap().heading.eval_noclear(),
+    //     loss_val
+    // );
 
-    let h_thrust = model.predictions.first().unwrap().h_thrust.data().unwrap();
-    let v_thrust = model.predictions.first().unwrap().v_thrust.data().unwrap();
+    let h_thrust = model.predictions.first().unwrap().h_thrust.eval_noclear();
+    let v_thrust = model.predictions.first().unwrap().v_thrust.eval_noclear();
 
     Ok((h_thrust, v_thrust, closest_path_node))
 }
