@@ -82,9 +82,22 @@ impl BicycleApp {
         }
 
         if !self.paused {
-            self.t += self.playback_speed;
-            if self.bicycle_model.bicycle_states.len() <= self.t as usize {
-                self.t = 0.;
+            if matches!(self.params.path_shape, BicyclePath::Point) {
+                match control_bicycle(&self.bicycle, &self.params) {
+                    Ok(state) => {
+                        self.bicycle.pos = state.pos;
+                        self.bicycle.heading = state.heading;
+                        self.bicycle.steering = state.steering;
+                        self.bicycle.predictions = state.predictions;
+                        self.bicycle.prev_path_node = state.closest_path_node;
+                    }
+                    Err(e) => eprintln!("Error: {e}"),
+                }
+            } else {
+                self.t += self.playback_speed;
+                if self.bicycle_model.bicycle_states.len() <= self.t as usize {
+                    self.t = 0.;
+                }
             }
         }
     }
@@ -234,18 +247,6 @@ impl BicycleApp {
                             Some([self.bicycle.pos, from_pos2(pointer_pos)]);
                         self.params.reset_path();
                         self.bicycle.prev_path_node = 0;
-                    }
-                }
-                if !self.paused {
-                    match control_bicycle(&self.bicycle, &self.params) {
-                        Ok(state) => {
-                            self.bicycle.pos = state.pos;
-                            self.bicycle.heading = state.heading;
-                            self.bicycle.steering = state.steering;
-                            self.bicycle.predictions = state.predictions;
-                            self.bicycle.prev_path_node = state.closest_path_node;
-                        }
-                        Err(e) => eprintln!("Error: {e}"),
                     }
                 }
             }
