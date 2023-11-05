@@ -78,7 +78,7 @@ impl BicycleApp {
                         self.playback_speed as f64,
                     );
                 } else {
-                    match control_bicycle(&self.bicycle, &self.params) {
+                    match control_bicycle(&self.bicycle, &self.params, self.playback_speed) {
                         Ok(state) => {
                             self.bicycle.pos = state.pos;
                             self.bicycle.heading = state.heading;
