@@ -94,19 +94,16 @@ impl BicycleParams {
     pub fn reset_path(&mut self) {
         if let BicyclePath::ClickedPoint = self.path_shape {
             let wps = &self.path_params.path_waypoints;
-            self.path = wps
-                .iter()
-                .zip(wps.iter().skip(1))
-                .fold(vec![], |mut acc, cur| {
-                    let delta = *cur.1 - *cur.0;
-                    let length = delta.length();
-                    let len = length as usize / 2;
-                    acc.extend((0..len).map(|i| {
-                        let f = i as f64 / len as f64;
-                        *cur.1 * f + *cur.0 * (1. - f)
-                    }));
-                    acc
-                });
+            self.path.clear();
+            for (&prev, &next) in wps.iter().zip(wps.iter().skip(1)) {
+                let delta = next - prev;
+                let length = delta.length();
+                let len = length as usize;
+                self.path.extend((0..len).map(|i| {
+                    let f = i as f64 / len as f64;
+                    next * f + prev * (1. - f)
+                }));
+            }
             return;
         }
         self.path = Self::gen_path(
@@ -339,7 +336,7 @@ fn optimize(
             })
             .unwrap_or(0)
     } else {
-        0
+        params.path.len() - 1
     };
 
     for (i, state) in model.predictions.iter().enumerate() {
@@ -397,9 +394,7 @@ fn simulate_step(model: &Model, _t: usize, h_thrust: f64, v_thrust: f64) -> (Vec
     let oldpos = bicycle.pos.map(|x| x.data().unwrap());
     let newpos = oldpos + direction * v_thrust;
     bicycle.pos.x.set(newpos.x).unwrap();
-    bicycle.pos.x.eval();
     bicycle.pos.y.set(newpos.y).unwrap();
-    bicycle.pos.y.eval();
     bicycle.heading.set(next_heading).unwrap();
     bicycle.steering.set(steering).unwrap();
 
