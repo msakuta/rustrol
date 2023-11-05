@@ -93,17 +93,20 @@ impl BicycleParams {
 
     pub fn reset_path(&mut self) {
         if let BicyclePath::ClickedPoint = self.path_shape {
-            if let Some(seg) = self.path_params.line_segment {
-                let delta = seg[1] - seg[0];
-                let length = delta.length();
-                let len = length as usize / 2;
-                self.path = (0..len)
-                    .map(|i| {
+            let wps = &self.path_params.path_waypoints;
+            self.path = wps
+                .iter()
+                .zip(wps.iter().skip(1))
+                .fold(vec![], |mut acc, cur| {
+                    let delta = *cur.1 - *cur.0;
+                    let length = delta.length();
+                    let len = length as usize / 2;
+                    acc.extend((0..len).map(|i| {
                         let f = i as f64 / len as f64;
-                        seg[1] * f + seg[0] * (1. - f)
-                    })
-                    .collect();
-            }
+                        *cur.1 * f + *cur.0 * (1. - f)
+                    }));
+                    acc
+                });
             return;
         }
         self.path = Self::gen_path(
@@ -136,7 +139,7 @@ pub struct PathParams {
     pub sine_period: f64,
     pub sine_amplitude: f64,
     pub crank_period: f64,
-    pub line_segment: Option<[Vec2<f64>; 2]>,
+    pub path_waypoints: Vec<Vec2<f64>>,
 }
 
 impl Default for PathParams {
@@ -147,7 +150,7 @@ impl Default for PathParams {
             sine_period: SINE_PERIOD,
             sine_amplitude: SINE_AMPLITUDE,
             crank_period: CRANK_PERIOD,
-            line_segment: None,
+            path_waypoints: vec![],
         }
     }
 }

@@ -182,6 +182,9 @@ impl BicycleApp {
         });
 
         if reset_path {
+            if matches!(self.params.path_shape, BicyclePath::ClickedPoint) {
+                self.params.path_params.path_waypoints = vec![self.bicycle.pos];
+            }
             self.params.reset_path();
             if !self.realtime {
                 (self.bicycle_result, self.error_msg) =
@@ -271,8 +274,10 @@ impl BicycleApp {
                 if response.clicked() {
                     println!("Clicked {:?}", response.interact_pointer_pos());
                     if let Some(pointer_pos) = response.interact_pointer_pos() {
-                        self.params.path_params.line_segment =
-                            Some([self.bicycle.pos, from_pos2(pointer_pos)]);
+                        self.params
+                            .path_params
+                            .path_waypoints
+                            .push(from_pos2(pointer_pos));
                         self.params.reset_path();
                         self.bicycle.prev_path_node = 0;
                     }
