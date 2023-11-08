@@ -244,6 +244,12 @@ impl BicycleApp {
             1.
         };
         let interact_pos = i.pointer.interact_pos().unwrap_or(Pos2::ZERO);
+        let delta = i.pointer.delta();
+
+        if i.pointer.primary_down() {
+            self.view_offset[0] += delta.x / self.view_scale;
+            self.view_offset[1] -= delta.y / self.view_scale;
+        }
 
         if scroll_delta != 0. || zoom_delta != 1. {
             let interact_pos_a: [f32; 2] = [
