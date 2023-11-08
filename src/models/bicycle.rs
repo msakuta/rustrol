@@ -472,7 +472,7 @@ fn get_model<'a>(tape: &'a Tape<f64>, initial_pos: Vec2<f64>, params: &BicyclePa
 
     bicycle
         .v_thrust
-        .set(params.path_params.target_speed)
+        .set(params.path_params.target_speed * 0.5)
         .unwrap();
 
     // let heading_weight = tape.term("heading_weight", HEADING_WEIGHT);

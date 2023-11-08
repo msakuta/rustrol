@@ -449,12 +449,6 @@ impl BicycleApp {
                     painter.circle(to_pos2(target), 5., Color32::RED, (1., Color32::BLACK));
                 }
 
-                let closest_path_node = closest_path_s as usize;
-
-                let start = closest_path_node.min(self.params.path.len() - 1);
-                let end = (closest_path_node + self.params.prediction_states)
-                    .min(self.params.path.len() - 1);
-
                 let path_predictions: Vec<_> = (0..self.params.prediction_states)
                     .filter_map(|i| interpolate_path(&self.params.path, closest_path_s + i as f64))
                     .map(to_pos2)
