@@ -343,8 +343,8 @@ fn optimize(
             let d_v_thrust = try_grad!(hist.v_thrust);
             let h_thrust = (hist.h_thrust.data().unwrap() - d_h_thrust * params.rate)
                 .clamp(-STEERING_SPEED, STEERING_SPEED);
-            let v_thrust =
-                (hist.v_thrust.data().unwrap() - d_v_thrust * params.rate).clamp(0., MAX_THRUST);
+            let v_thrust = (hist.v_thrust.data().unwrap() - d_v_thrust * params.rate)
+                .clamp(0., params.path_params.target_speed);
             hist.h_thrust.set(h_thrust).unwrap();
             hist.v_thrust.set(v_thrust).unwrap();
         }
@@ -469,6 +469,11 @@ struct Model<'a> {
 
 fn get_model<'a>(tape: &'a Tape<f64>, initial_pos: Vec2<f64>, params: &BicycleParams) -> Model<'a> {
     let bicycle = BicycleTape::new(tape, initial_pos);
+
+    bicycle
+        .v_thrust
+        .set(params.path_params.target_speed)
+        .unwrap();
 
     // let heading_weight = tape.term("heading_weight", HEADING_WEIGHT);
 

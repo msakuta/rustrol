@@ -1,5 +1,6 @@
+use cgmath::{Matrix3, Point2, Transform, Vector2};
 use eframe::{
-    egui::{self, Context, Frame, Ui},
+    egui::{self, Context, Frame, InputState, Ui},
     emath::Align2,
     epaint::{pos2, Color32, FontId, PathShape, Pos2, Rect},
 };
@@ -19,7 +20,9 @@ pub struct BicycleApp {
     paused: bool,
     bicycle: Bicycle,
     bicycle_result: BicycleResult,
-    view_offset: Pos2,
+    view_offset: [f32; 2],
+    view_scale: f32,
+    follow_bicycle: bool,
     t: f64,
     playback_speed: f64,
     h_thrust: f64,
@@ -43,7 +46,9 @@ impl BicycleApp {
             paused: false,
             bicycle: Bicycle::new(),
             bicycle_result,
-            view_offset: Pos2::ZERO,
+            view_offset: [0.; 2],
+            view_scale: SCALE,
+            follow_bicycle: true,
             t: 0.,
             playback_speed: 0.5,
             h_thrust: 0.,
@@ -51,6 +56,15 @@ impl BicycleApp {
             params,
             error_msg,
         }
+    }
+
+    fn view_transform(&self) -> Matrix3<f32> {
+        Matrix3::from_scale(self.view_scale) * Matrix3::from_translation(self.view_offset.into())
+    }
+
+    fn inverse_view_transform(&self) -> Matrix3<f32> {
+        Matrix3::from_translation(-cgmath::Vector2::from(self.view_offset))
+            * Matrix3::from_scale(1. / self.view_scale)
     }
 
     pub fn update(&mut self, ctx: &Context) {
@@ -118,6 +132,7 @@ impl BicycleApp {
             &mut self.playback_speed,
             (0.1)..=2.,
         ));
+        ui.checkbox(&mut self.follow_bicycle, "Follow bicycle");
         ui.group(|ui| {
             ui.label("Path shape:");
             ui.add_enabled_ui(self.realtime, |ui| {
@@ -221,6 +236,35 @@ impl BicycleApp {
         ));
     }
 
+    fn handle_zoom(&mut self, i: &InputState, canvas_offset: [f32; 2]) {
+        let scroll_delta = i.scroll_delta[1];
+        let zoom_delta = if i.multi_touch().is_some() {
+            i.zoom_delta()
+        } else {
+            1.
+        };
+        let interact_pos = i.pointer.interact_pos().unwrap_or(Pos2::ZERO);
+
+        if scroll_delta != 0. || zoom_delta != 1. {
+            let interact_pos_a: [f32; 2] = [
+                -interact_pos.x + canvas_offset[0],
+                interact_pos.y - canvas_offset[1],
+            ];
+            let old_offset = transform_point(&self.inverse_view_transform(), interact_pos_a);
+            if scroll_delta < 0. {
+                self.view_scale /= 1.2;
+            } else if 0. < scroll_delta {
+                self.view_scale *= 1.2;
+            } else if zoom_delta != 1. {
+                self.view_scale *= zoom_delta;
+            }
+            let new_offset = transform_point(&self.inverse_view_transform(), interact_pos_a);
+            let diff = new_offset - old_offset;
+            let diff = -Vector2::new(diff[0], diff[1]);
+            self.view_offset = (Vector2::<f32>::from(self.view_offset) + diff).into();
+        }
+    }
+
     pub fn paint_graph(&mut self, ui: &mut Ui) {
         Frame::canvas(ui.style()).show(ui, |ui| {
             let (response, painter) =
@@ -243,25 +287,40 @@ impl BicycleApp {
             } else {
                 bicycle.pos
             };
-            let view_delta = eframe::emath::vec2(bicycle_pos.x as f32, -bicycle_pos.y as f32)
-                * SCALE
-                - self.view_offset.to_vec2();
-            self.view_offset += view_delta * 0.05;
-            let canvas_offset_x = response.rect.width() * 0.5 - self.view_offset.x;
-            let canvas_offset_y = response.rect.height() * 0.5 - self.view_offset.y;
+
+            if ui.ui_contains_pointer() {
+                ui.input(|i| {
+                    self.handle_zoom(
+                        i,
+                        [response.rect.width() * 0.5, response.rect.height() * 0.5],
+                    )
+                });
+            }
+
+            if self.follow_bicycle {
+                let view_offset = egui::Vec2::from(self.view_offset);
+                let view_delta =
+                    -eframe::emath::vec2(bicycle_pos.x as f32, bicycle_pos.y as f32) - view_offset;
+                let new_view_offset = view_offset + view_delta * 0.05;
+                self.view_offset = new_view_offset.into();
+            }
+            let canvas_offset_x = response.rect.width() * 0.5;
+            let canvas_offset_y = response.rect.height() * 0.5;
 
             let to_pos2 = |pos: Vec2<f64>| {
                 to_screen.transform_pos(pos2(
-                    canvas_offset_x + pos.x as f32 * SCALE,
-                    canvas_offset_y - pos.y as f32 * SCALE,
+                    canvas_offset_x + (pos.x as f32 + self.view_offset[0]) * self.view_scale,
+                    canvas_offset_y - (pos.y as f32 + self.view_offset[1]) * self.view_scale,
                 ))
             };
 
             let from_pos2 = |pos: Pos2| {
                 let model_pos = from_screen.transform_pos(pos);
                 Vec2 {
-                    x: ((model_pos.x - canvas_offset_x) / SCALE) as f64,
-                    y: ((canvas_offset_y - model_pos.y) / SCALE) as f64,
+                    x: ((model_pos.x - canvas_offset_x) / self.view_scale - self.view_offset[0])
+                        as f64,
+                    y: ((canvas_offset_y - model_pos.y) / self.view_scale - self.view_offset[1])
+                        as f64,
                 }
             };
 
@@ -332,7 +391,7 @@ impl BicycleApp {
                 let rotation = rotation_matrix(heading as f32);
                 let steering = rotation_matrix((heading + steering) as f32);
                 let transform_delta =
-                    |ofs: &[f32; 2]| scale_vec(SCALE, &rotate_vec(&rotation, ofs));
+                    |ofs: &[f32; 2]| scale_vec(self.view_scale, &rotate_vec(&rotation, ofs));
                 let transform_vec = |ofs: &[f32; 2]| Pos2::from(transform_delta(ofs)) + base_pos;
                 let convert_to_poly = |vertices: &[[f32; 2]]| {
                     PathShape::convex_polygon(
@@ -486,4 +545,10 @@ impl BicycleApp {
             }
         });
     }
+}
+
+/// Transform a point. Equivalent to `(m * v.extend(1.)).truncate()`.
+fn transform_point(m: &Matrix3<f32>, v: impl Into<Point2<f32>>) -> Point2<f32> {
+    // I don't really get the point of having the vector and the point as different types.
+    <Matrix3<f32> as Transform<Point2<f32>>>::transform_point(m, v.into())
 }
