@@ -353,9 +353,14 @@ impl BicycleApp {
 
             let bicycle = &self.bicycle;
 
-            const GRID_SIZE: f64 = 10.;
-            for i in -10..10 {
-                let x = (i as f64 + bicycle_pos.x.div_euclid(GRID_SIZE)) * GRID_SIZE;
+            const GRID_SIZE: f64 = 50.;
+            let grid_scale = GRID_SIZE as f32 / (10f32).powf(self.view_scale.log10().floor());
+            let target_min = from_pos2(response.rect.min);
+            let target_max = from_pos2(response.rect.max);
+            let target_min_i = target_min.map(|x| (x as f32).div_euclid(grid_scale) as i32);
+            let target_max_i = target_max.map(|x| (x as f32).div_euclid(grid_scale) as i32);
+            for i in target_min_i.x..=target_max_i.x {
+                let x = i as f64 * grid_scale as f64;
                 let tpos = to_pos2(Vec2::new(x, 0.));
                 painter.line_segment(
                     [
@@ -365,8 +370,8 @@ impl BicycleApp {
                     (1., Color32::GRAY),
                 );
             }
-            for i in -10..10 {
-                let y = (i as f64 + bicycle_pos.y.div_euclid(GRID_SIZE)) * GRID_SIZE;
+            for i in target_max_i.y..=target_min_i.y {
+                let y = i as f64 * grid_scale as f64;
                 let tpos = to_pos2(Vec2::new(0., y));
                 painter.line_segment(
                     [
