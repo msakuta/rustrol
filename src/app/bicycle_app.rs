@@ -347,13 +347,14 @@ impl BicycleApp {
                 painter.add(convert_to_poly(&[[7., -1.], [8., 0.], [7., 1.]]));
 
                 let paint_wheel = |ofs: &[f32; 2], rotation: &[f32; 4]| {
-                    let front_wheel = transform_vec(ofs);
-                    let front_front =
-                        front_wheel + eframe::emath::Vec2::from(rotate_vec(rotation, &[SCALE, 0.]));
-                    let front_back =
-                        front_wheel - eframe::emath::Vec2::from(rotate_vec(rotation, &[SCALE, 0.]));
+                    use eframe::emath::Vec2;
+                    let middle = transform_vec(ofs);
+                    let front =
+                        middle + Vec2::from(rotate_vec(rotation, &[self.transform.scale(), 0.]));
+                    let back =
+                        middle - Vec2::from(rotate_vec(rotation, &[self.transform.scale(), 0.]));
 
-                    painter.line_segment([front_front, front_back], (2., Color32::BLACK));
+                    painter.line_segment([front, back], (2., Color32::BLACK));
                 };
 
                 paint_wheel(&[4., 0.], &steering);
