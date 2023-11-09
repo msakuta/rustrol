@@ -58,7 +58,8 @@ impl Transform {
             * Matrix3::from_scale(1. / self.scale)
     }
 
-    pub(crate) fn handle_zoom(&mut self, i: &InputState, canvas_offset: [f32; 2]) {
+    /// Handle mouse events, namely the wheel and dragging.
+    pub(crate) fn handle_mouse(&mut self, i: &InputState, canvas_offset: [f32; 2]) {
         let scroll_delta = i.scroll_delta[1];
         let zoom_delta = if i.multi_touch().is_some() {
             i.zoom_delta()

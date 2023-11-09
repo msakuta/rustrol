@@ -253,7 +253,7 @@ impl BicycleApp {
             if ui.ui_contains_pointer() {
                 ui.input(|i| {
                     self.transform
-                        .handle_zoom(i, [canvas_offset_x, canvas_offset_y])
+                        .handle_mouse(i, [canvas_offset_x, canvas_offset_y])
                 });
             }
 

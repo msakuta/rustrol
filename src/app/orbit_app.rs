@@ -13,12 +13,15 @@ use crate::{
     xor128::Xor128,
 };
 
+use super::transform::Transform;
+
 const SCALE: f32 = 50.;
 
 pub struct OrbitalApp {
     direct_control: bool,
     paused: bool,
     orbital_params: OrbitalParams,
+    transform: Transform,
     prediction_horizon: usize,
     t: f64,
     randomize: bool,
@@ -42,6 +45,7 @@ impl OrbitalApp {
             direct_control: false,
             paused: false,
             orbital_params,
+            transform: Transform::new(SCALE),
             prediction_horizon: 250,
             t: 0.,
             randomize: true,
@@ -73,18 +77,28 @@ impl OrbitalApp {
             let canvas_offset_x = response.rect.width() * 0.5;
             let canvas_offset_y = response.rect.height() * 0.5;
 
+            if ui.ui_contains_pointer() {
+                ui.input(|i| {
+                    self.transform
+                        .handle_mouse(i, [canvas_offset_x, canvas_offset_y])
+                });
+            }
+
+            let transform = self.transform;
+
             let to_pos2 = |pos: Vec2<f64>| {
-                to_screen.transform_pos(pos2(
-                    canvas_offset_x + pos.x as f32 * SCALE,
-                    canvas_offset_y - pos.y as f32 * SCALE,
-                ))
+                let pos = transform.transform_point([pos.x as f32, pos.y as f32]);
+                to_screen.transform_pos(pos2(canvas_offset_x + pos.x, canvas_offset_y - pos.y))
             };
 
             let from_pos2 = |pos: Pos2| {
-                let model_pos = from_screen.transform_pos(pos);
+                let pos = from_screen.transform_pos(pos);
+                let pos = self
+                    .transform
+                    .inverse_transform_point([pos.x - canvas_offset_x, canvas_offset_y - pos.y]);
                 Vec2 {
-                    x: ((model_pos.x - canvas_offset_x) / SCALE) as f64,
-                    y: ((canvas_offset_y - model_pos.y) / SCALE) as f64,
+                    x: pos.x as f64,
+                    y: pos.y as f64,
                 }
             };
 

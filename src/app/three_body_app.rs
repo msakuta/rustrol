@@ -92,7 +92,7 @@ impl ThreeBodyApp {
             if ui.ui_contains_pointer() {
                 ui.input(|i| {
                     self.transform
-                        .handle_zoom(i, [canvas_offset_x, canvas_offset_y])
+                        .handle_mouse(i, [canvas_offset_x, canvas_offset_y])
                 });
             }
 
@@ -104,11 +104,13 @@ impl ThreeBodyApp {
             };
 
             let from_pos2 = |pos: Pos2| {
-                let pos = transform.inverse_transform_point(pos);
-                let model_pos = from_screen.transform_pos(pos);
+                let pos = from_screen.transform_pos(pos);
+                let pos = self
+                    .transform
+                    .inverse_transform_point([pos.x - canvas_offset_x, canvas_offset_y - pos.y]);
                 Vec2 {
-                    x: (model_pos.x - canvas_offset_x) as f64,
-                    y: (canvas_offset_y - model_pos.y) as f64,
+                    x: pos.x as f64,
+                    y: pos.y as f64,
                 }
             };
 
