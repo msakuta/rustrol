@@ -120,7 +120,7 @@ impl Transform {
         );
         let from_screen = to_screen.inverse();
 
-        let canvas_offset = [response.rect.width() * 0.5, response.rect.height() * 0.5];
+        let canvas_offset = half_rect(&response.rect);
         PaintTransform {
             transform: *self,
             canvas_offset,
@@ -171,4 +171,8 @@ impl PaintTransform {
             y: pos.y as f64,
         }
     }
+}
+
+pub(crate) fn half_rect(rect: &Rect) -> [f32; 2] {
+    [rect.width() * 0.5, rect.height() * 0.5]
 }

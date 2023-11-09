@@ -12,7 +12,10 @@ use crate::{
     vec2::Vec2,
 };
 
-use super::{transform::Transform, SCALE};
+use super::{
+    transform::{half_rect, Transform},
+    SCALE,
+};
 
 pub struct BicycleApp {
     realtime: bool,
@@ -229,8 +232,6 @@ impl BicycleApp {
             let (response, painter) =
                 ui.allocate_painter(ui.available_size(), egui::Sense::click());
 
-            let paint_transform = self.transform.into_paint(&response);
-
             let bicycle = &self.bicycle;
             let bicycle_pos = if !self.realtime {
                 let t = self.t as usize;
@@ -244,11 +245,10 @@ impl BicycleApp {
             };
 
             if ui.ui_contains_pointer() {
-                ui.input(|i| {
-                    self.transform
-                        .handle_mouse(i, paint_transform.canvas_offset())
-                });
+                ui.input(|i| self.transform.handle_mouse(i, half_rect(&response.rect)));
             }
+
+            let paint_transform = self.transform.into_paint(&response);
 
             if self.follow_bicycle {
                 self.transform

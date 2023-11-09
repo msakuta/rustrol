@@ -3,7 +3,10 @@ use eframe::{
     epaint::{vec2, PathShape},
 };
 
-use super::{transform::Transform, LANDER_LEG_OFFSET, SCALE};
+use super::{
+    transform::{half_rect, Transform},
+    LANDER_LEG_OFFSET, SCALE,
+};
 use crate::{
     models::lander::{
         lander_simulate_step, simulate_lander, LanderModel, LanderParams, LanderState,
@@ -58,12 +61,7 @@ impl LanderApp {
                 ui.allocate_painter(ui.available_size(), egui::Sense::click());
 
             if ui.ui_contains_pointer() {
-                ui.input(|i| {
-                    self.transform.handle_mouse(
-                        i,
-                        [response.rect.width() * 0.5, response.rect.height() * 0.5],
-                    )
-                });
+                ui.input(|i| self.transform.handle_mouse(i, half_rect(&response.rect)));
             }
 
             let paint_transform = self.transform.into_paint(&response);
