@@ -1,7 +1,7 @@
 use eframe::{
     egui::{self, Context, Frame, Ui},
     emath::Align2,
-    epaint::{pos2, Color32, FontId, PathShape, Pos2},
+    epaint::{pos2, Color32, FontId, PathShape, Pos2, Stroke},
 };
 
 use crate::{
@@ -278,35 +278,40 @@ impl BicycleApp {
 
             let bicycle = &self.bicycle;
 
-            const GRID_SIZE: f64 = 50.;
-            let grid_scale =
-                GRID_SIZE as f32 / (10f32).powf(self.transform.scale().log10().floor());
-            let target_min = paint_transform.from_pos2(response.rect.min);
-            let target_max = paint_transform.from_pos2(response.rect.max);
-            let target_min_i = target_min.map(|x| (x as f32).div_euclid(grid_scale) as i32);
-            let target_max_i = target_max.map(|x| (x as f32).div_euclid(grid_scale) as i32);
-            for i in target_min_i.x..=target_max_i.x {
-                let x = i as f64 * grid_scale as f64;
-                let tpos = paint_transform.to_pos2(Vec2::new(x, 0.));
-                painter.line_segment(
-                    [
-                        pos2(tpos.x, response.rect.min.y),
-                        pos2(tpos.x, response.rect.max.y),
-                    ],
-                    (1., Color32::GRAY),
-                );
-            }
-            for i in target_max_i.y..=target_min_i.y {
-                let y = i as f64 * grid_scale as f64;
-                let tpos = paint_transform.to_pos2(Vec2::new(0., y));
-                painter.line_segment(
-                    [
-                        pos2(response.rect.min.x, tpos.y),
-                        pos2(response.rect.max.x, tpos.y),
-                    ],
-                    (1., Color32::GRAY),
-                );
-            }
+            const GRID_SIZE: f32 = 50.;
+            let render_grid = |grid_size: f32, stroke: Stroke| {
+                let grid_scale =
+                    grid_size as f32 / (10f32).powf(self.transform.scale().log10().floor());
+                let target_min = paint_transform.from_pos2(response.rect.min);
+                let target_max = paint_transform.from_pos2(response.rect.max);
+                let target_min_i = target_min.map(|x| (x as f32).div_euclid(grid_scale) as i32);
+                let target_max_i = target_max.map(|x| (x as f32).div_euclid(grid_scale) as i32);
+                for i in target_min_i.x..=target_max_i.x {
+                    let x = i as f64 * grid_scale as f64;
+                    let tpos = paint_transform.to_pos2(Vec2::new(x, 0.));
+                    painter.line_segment(
+                        [
+                            pos2(tpos.x, response.rect.min.y),
+                            pos2(tpos.x, response.rect.max.y),
+                        ],
+                        stroke,
+                    );
+                }
+                for i in target_max_i.y..=target_min_i.y {
+                    let y = i as f64 * grid_scale as f64;
+                    let tpos = paint_transform.to_pos2(Vec2::new(0., y));
+                    painter.line_segment(
+                        [
+                            pos2(response.rect.min.x, tpos.y),
+                            pos2(response.rect.max.x, tpos.y),
+                        ],
+                        stroke,
+                    );
+                }
+            };
+
+            render_grid(GRID_SIZE / 10., (1., Color32::from_rgb(223, 223, 223)).into());
+            render_grid(GRID_SIZE, (2., Color32::from_rgb(192, 192, 192)).into());
 
             let rotation_matrix = |angle: f32| {
                 [
