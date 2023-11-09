@@ -12,7 +12,7 @@ use crate::{
     xor128::Xor128,
 };
 
-use super::SCALE;
+use super::{transform::Transform, SCALE};
 
 const DEFAULT_ORIENTATION: f64 = std::f64::consts::PI / 4.;
 
@@ -29,6 +29,7 @@ pub struct MissileApp {
     direct_control: bool,
     paused: bool,
     missile_params: MissileParams,
+    transform: Transform,
     t: f64,
     randomize: bool,
     rng: Xor128,
@@ -52,6 +53,7 @@ impl MissileApp {
             direct_control: false,
             paused: false,
             missile_params,
+            transform: Transform::new(SCALE),
             t: 0.,
             randomize: true,
             rng: Xor128::new(3232123),
@@ -69,29 +71,14 @@ impl MissileApp {
             let (response, painter) =
                 ui.allocate_painter(ui.available_size(), egui::Sense::click());
 
-            let to_screen = egui::emath::RectTransform::from_to(
-                Rect::from_min_size(Pos2::ZERO, response.rect.size()),
-                response.rect,
-            );
-            let from_screen = to_screen.inverse();
+            let paint_transform = self.transform.into_paint(&response);
 
-            let canvas_offset_x = response.rect.width() * 0.5;
-            let canvas_offset_y = response.rect.height() * 0.5;
-
-            let to_pos2 = |pos: Vec2<f64>| {
-                to_screen.transform_pos(pos2(
-                    canvas_offset_x + pos.x as f32 * SCALE,
-                    canvas_offset_y - pos.y as f32 * SCALE,
-                ))
-            };
-
-            let from_pos2 = |pos: Pos2| {
-                let model_pos = from_screen.transform_pos(pos);
-                Vec2 {
-                    x: ((model_pos.x - canvas_offset_x) / SCALE) as f64,
-                    y: ((canvas_offset_y - model_pos.y) / SCALE) as f64,
-                }
-            };
+            if ui.ui_contains_pointer() {
+                ui.input(|i| {
+                    self.transform
+                        .handle_mouse(i, paint_transform.canvas_offset())
+                });
+            }
 
             if let Some(ref err) = self.error_msg {
                 painter.text(
@@ -105,13 +92,19 @@ impl MissileApp {
 
             if response.clicked() {
                 if let Some(mouse_pos) = response.interact_pointer_pos() {
-                    self.try_simulate_missile(from_pos2(mouse_pos), DEFAULT_ORIENTATION);
+                    self.try_simulate_missile(
+                        paint_transform.from_pos2(mouse_pos),
+                        DEFAULT_ORIENTATION,
+                    );
                 }
             }
 
             let render_missile = |missile_state: &MissileState| {
                 let render_path = |prediction: &[Vec2<f64>], color: Color32| {
-                    let pos = prediction.iter().map(|x| to_pos2(*x)).collect();
+                    let pos = prediction
+                        .iter()
+                        .map(|x| paint_transform.to_pos2(*x))
+                        .collect();
                     let path = PathShape::line(pos, (2., color));
                     painter.add(path);
                 };
@@ -121,7 +114,7 @@ impl MissileApp {
                     Color32::from_rgb(0, 127, 0),
                 );
 
-                let missile_pos = to_pos2(missile_state.pos).to_vec2();
+                let missile_pos = paint_transform.to_pos2(missile_state.pos).to_vec2();
                 let orientation = missile_state.heading;
                 let rotation = [
                     orientation.cos() as f32,
@@ -159,7 +152,7 @@ impl MissileApp {
                 painter.add(convert_to_poly(&[[5., 3.], [5., 12.], [10., 12.]]));
 
                 painter.circle(
-                    to_pos2(missile_state.target),
+                    paint_transform.to_pos2(missile_state.target),
                     5.,
                     Color32::GREEN,
                     (1., Color32::YELLOW),
