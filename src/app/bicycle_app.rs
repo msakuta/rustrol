@@ -1,7 +1,7 @@
 use eframe::{
     egui::{self, Context, Frame, Ui},
     emath::Align2,
-    epaint::{pos2, Color32, FontId, PathShape, Pos2, Rect},
+    epaint::{pos2, Color32, FontId, PathShape, Pos2},
 };
 
 use crate::{
@@ -229,11 +229,7 @@ impl BicycleApp {
             let (response, painter) =
                 ui.allocate_painter(ui.available_size(), egui::Sense::click());
 
-            let to_screen = egui::emath::RectTransform::from_to(
-                Rect::from_min_size(Pos2::ZERO, response.rect.size()),
-                response.rect,
-            );
-            let from_screen = to_screen.inverse();
+            let paint_transform = self.transform.into_paint(&response);
 
             let bicycle = &self.bicycle;
             let bicycle_pos = if !self.realtime {
@@ -247,13 +243,10 @@ impl BicycleApp {
                 bicycle.pos
             };
 
-            let canvas_offset_x = response.rect.width() * 0.5;
-            let canvas_offset_y = response.rect.height() * 0.5;
-
             if ui.ui_contains_pointer() {
                 ui.input(|i| {
                     self.transform
-                        .handle_mouse(i, [canvas_offset_x, canvas_offset_y])
+                        .handle_mouse(i, paint_transform.canvas_offset())
                 });
             }
 
@@ -262,23 +255,7 @@ impl BicycleApp {
                     .follow([bicycle_pos.x as f32, bicycle_pos.y as f32]);
             }
 
-            let to_pos2 = |pos: Vec2<f64>| {
-                let pos = self.transform.transform_point([pos.x as f32, pos.y as f32]);
-                to_screen.transform_pos(pos2(canvas_offset_x + pos.x, canvas_offset_y - pos.y))
-            };
-
-            let from_pos2 = |pos: Pos2| {
-                let pos = from_screen.transform_pos(pos);
-                let pos = self
-                    .transform
-                    .inverse_transform_point([pos.x - canvas_offset_x, canvas_offset_y - pos.y]);
-                Vec2 {
-                    x: pos.x as f64,
-                    y: pos.y as f64,
-                }
-            };
-
-            let base_pos = to_pos2(bicycle_pos).to_vec2();
+            let base_pos = paint_transform.to_pos2(bicycle_pos).to_vec2();
 
             const GREEN: Color32 = Color32::from_rgb(0, 127, 0);
             const PURPLE: Color32 = Color32::from_rgb(127, 0, 127);
@@ -292,7 +269,7 @@ impl BicycleApp {
                         self.params
                             .path_params
                             .path_waypoints
-                            .push(from_pos2(pointer_pos));
+                            .push(paint_transform.from_pos2(pointer_pos));
                         self.params.reset_path();
                         self.bicycle.prev_path_node = 0.;
                     }
@@ -304,13 +281,13 @@ impl BicycleApp {
             const GRID_SIZE: f64 = 50.;
             let grid_scale =
                 GRID_SIZE as f32 / (10f32).powf(self.transform.scale().log10().floor());
-            let target_min = from_pos2(response.rect.min);
-            let target_max = from_pos2(response.rect.max);
+            let target_min = paint_transform.from_pos2(response.rect.min);
+            let target_max = paint_transform.from_pos2(response.rect.max);
             let target_min_i = target_min.map(|x| (x as f32).div_euclid(grid_scale) as i32);
             let target_max_i = target_max.map(|x| (x as f32).div_euclid(grid_scale) as i32);
             for i in target_min_i.x..=target_max_i.x {
                 let x = i as f64 * grid_scale as f64;
-                let tpos = to_pos2(Vec2::new(x, 0.));
+                let tpos = paint_transform.to_pos2(Vec2::new(x, 0.));
                 painter.line_segment(
                     [
                         pos2(tpos.x, response.rect.min.y),
@@ -321,7 +298,7 @@ impl BicycleApp {
             }
             for i in target_max_i.y..=target_min_i.y {
                 let y = i as f64 * grid_scale as f64;
-                let tpos = to_pos2(Vec2::new(0., y));
+                let tpos = paint_transform.to_pos2(Vec2::new(0., y));
                 painter.line_segment(
                     [
                         pos2(response.rect.min.x, tpos.y),
@@ -385,12 +362,15 @@ impl BicycleApp {
 
             let paint_predictions = |predictions: &[Vec2<f64>]| {
                 painter.add(PathShape::line(
-                    predictions.iter().map(|ofs| to_pos2(*ofs)).collect(),
+                    predictions
+                        .iter()
+                        .map(|ofs| paint_transform.to_pos2(*ofs))
+                        .collect(),
                     (2., YELLOW),
                 ));
 
                 for prediction in predictions {
-                    painter.circle_filled(to_pos2(*prediction), 2.0, YELLOW);
+                    painter.circle_filled(paint_transform.to_pos2(*prediction), 2.0, YELLOW);
                 }
             };
 
@@ -400,12 +380,17 @@ impl BicycleApp {
                 }
 
                 if let Some(target) = interpolate_path(&self.params.path, closest_path_s) {
-                    painter.circle(to_pos2(target), 5., Color32::RED, (1., Color32::BLACK));
+                    painter.circle(
+                        paint_transform.to_pos2(target),
+                        5.,
+                        Color32::RED,
+                        (1., Color32::BLACK),
+                    );
                 }
 
                 let path_predictions: Vec<_> = (0..self.params.prediction_states)
                     .filter_map(|i| interpolate_path(&self.params.path, closest_path_s + i as f64))
-                    .map(to_pos2)
+                    .map(|v| paint_transform.to_pos2(v))
                     .collect();
                 painter.add(PathShape::line(path_predictions.clone(), (3., RED)));
 
@@ -419,7 +404,11 @@ impl BicycleApp {
             let (pos, heading, steering) = if self.realtime {
                 if !matches!(self.params.path_shape, BicyclePath::DirectControl) {
                     painter.add(PathShape::line(
-                        self.params.path.iter().map(|ofs| to_pos2(*ofs)).collect(),
+                        self.params
+                            .path
+                            .iter()
+                            .map(|ofs| paint_transform.to_pos2(*ofs))
+                            .collect(),
                         (2., PURPLE),
                     ));
                 }
@@ -428,7 +417,7 @@ impl BicycleApp {
                     bicycle
                         .pos_history
                         .iter()
-                        .map(|ofs| to_pos2(*ofs))
+                        .map(|ofs| paint_transform.to_pos2(*ofs))
                         .collect(),
                     (2., GREEN),
                 ));
@@ -450,13 +439,17 @@ impl BicycleApp {
                     self.bicycle_result
                         .bicycle_states
                         .iter()
-                        .map(|s| to_pos2(s.pos))
+                        .map(|s| paint_transform.to_pos2(s.pos))
                         .collect(),
                     (2., GREEN),
                 ));
 
                 painter.add(PathShape::line(
-                    self.params.path.iter().map(|ofs| to_pos2(*ofs)).collect(),
+                    self.params
+                        .path
+                        .iter()
+                        .map(|ofs| paint_transform.to_pos2(*ofs))
+                        .collect(),
                     (2., PURPLE),
                 ));
 

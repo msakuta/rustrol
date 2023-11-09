@@ -1,7 +1,8 @@
 use cgmath::{Matrix3, Point2, Vector2};
 use eframe::{
-    egui::InputState,
-    epaint::{pos2, Pos2, Vec2},
+    egui::{self, InputState, Response},
+    emath::RectTransform,
+    epaint::{pos2, Pos2, Rect, Vec2},
 };
 
 /// A type representing transformation, including scale and offset.
@@ -100,5 +101,57 @@ impl Transform {
         let view_delta = -eframe::emath::vec2(pos[0] as f32, pos[1] as f32) - view_offset;
         let new_view_offset = view_offset + view_delta * 0.05;
         self.offset = new_view_offset.into();
+    }
+
+    pub(crate) fn into_paint(&self, response: &Response) -> PaintTransform {
+        let to_screen = egui::emath::RectTransform::from_to(
+            Rect::from_min_size(Pos2::ZERO, response.rect.size()),
+            response.rect,
+        );
+        let from_screen = to_screen.inverse();
+
+        let canvas_offset = [response.rect.width() * 0.5, response.rect.height() * 0.5];
+        PaintTransform {
+            transform: *self,
+            canvas_offset,
+            to_screen,
+            from_screen,
+        }
+    }
+}
+
+/// A transformation instance at paint time. It has canvas size information in addition to logical transformation.
+///
+/// Since it depends on the paint time information, it should be created and discarded in single painting frame.
+pub(crate) struct PaintTransform {
+    transform: Transform,
+    canvas_offset: [f32; 2],
+    to_screen: RectTransform,
+    from_screen: RectTransform,
+}
+
+impl PaintTransform {
+    pub(crate) fn canvas_offset(&self) -> [f32; 2] {
+        self.canvas_offset
+    }
+
+    pub(crate) fn to_pos2(&self, pos: crate::vec2::Vec2<f64>) -> Pos2 {
+        let pos = self.transform.transform_point([pos.x as f32, pos.y as f32]);
+        self.to_screen.transform_pos(pos2(
+            self.canvas_offset[0] + pos.x,
+            self.canvas_offset[1] - pos.y,
+        ))
+    }
+
+    pub(crate) fn from_pos2(&self, pos: Pos2) -> crate::vec2::Vec2<f64> {
+        let pos = self.from_screen.transform_pos(pos);
+        let pos = self.transform.inverse_transform_point([
+            pos.x - self.canvas_offset[0],
+            self.canvas_offset[1] - pos.y,
+        ]);
+        crate::vec2::Vec2 {
+            x: pos.x as f64,
+            y: pos.y as f64,
+        }
     }
 }

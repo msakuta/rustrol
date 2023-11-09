@@ -1,7 +1,7 @@
 use eframe::{
     egui::{self, Context, Frame, Painter, Ui},
     emath::Align2,
-    epaint::{pos2, Color32, FontId, PathShape, Pos2, Rect},
+    epaint::{pos2, Color32, FontId, PathShape, Pos2},
 };
 
 use crate::{
@@ -68,39 +68,14 @@ impl OrbitalApp {
             let (response, painter) =
                 ui.allocate_painter(ui.available_size(), egui::Sense::click());
 
-            let to_screen = egui::emath::RectTransform::from_to(
-                Rect::from_min_size(Pos2::ZERO, response.rect.size()),
-                response.rect,
-            );
-            let from_screen = to_screen.inverse();
-
-            let canvas_offset_x = response.rect.width() * 0.5;
-            let canvas_offset_y = response.rect.height() * 0.5;
+            let paint_transform = self.transform.into_paint(&response);
 
             if ui.ui_contains_pointer() {
                 ui.input(|i| {
                     self.transform
-                        .handle_mouse(i, [canvas_offset_x, canvas_offset_y])
+                        .handle_mouse(i, paint_transform.canvas_offset())
                 });
             }
-
-            let transform = self.transform;
-
-            let to_pos2 = |pos: Vec2<f64>| {
-                let pos = transform.transform_point([pos.x as f32, pos.y as f32]);
-                to_screen.transform_pos(pos2(canvas_offset_x + pos.x, canvas_offset_y - pos.y))
-            };
-
-            let from_pos2 = |pos: Pos2| {
-                let pos = from_screen.transform_pos(pos);
-                let pos = self
-                    .transform
-                    .inverse_transform_point([pos.x - canvas_offset_x, canvas_offset_y - pos.y]);
-                Vec2 {
-                    x: pos.x as f64,
-                    y: pos.y as f64,
-                }
-            };
 
             if let Some(ref err) = self.error_msg {
                 painter.text(
@@ -114,12 +89,12 @@ impl OrbitalApp {
 
             if response.clicked() {
                 if let Some(mouse_pos) = response.interact_pointer_pos() {
-                    self.set_simulation(from_pos2(mouse_pos));
+                    self.set_simulation(paint_transform.from_pos2(mouse_pos));
                 }
             }
 
             let render_path = |poses: &[Vec2<f64>], color: Color32| {
-                let pos = poses.iter().map(|x| to_pos2(*x)).collect();
+                let pos = poses.iter().map(|x| paint_transform.to_pos2(*x)).collect();
                 let path = PathShape::line(pos, (2., color));
                 painter.add(path);
             };
@@ -146,13 +121,13 @@ impl OrbitalApp {
 
                 if let Some((_, pos, target_pos)) = closest {
                     painter.circle(
-                        to_pos2(pos),
+                        paint_transform.to_pos2(pos),
                         3.,
                         Color32::from_rgb(191, 191, 191),
                         (1., Color32::BLACK),
                     );
                     painter.circle(
-                        to_pos2(target_pos),
+                        paint_transform.to_pos2(target_pos),
                         3.,
                         Color32::from_rgb(191, 63, 191),
                         (1., Color32::BLACK),
@@ -205,13 +180,13 @@ impl OrbitalApp {
 
                 if let Some(idx) = shortest_idx {
                     painter.circle(
-                        to_pos2(self.orbital_model.after_optim[idx].satellite.pos),
+                        paint_transform.to_pos2(self.orbital_model.after_optim[idx].satellite.pos),
                         3.,
                         Color32::from_rgb(191, 191, 191),
                         (1., Color32::BLACK),
                     );
                     painter.circle(
-                        to_pos2(self.orbital_model.after_optim[idx].target.pos),
+                        paint_transform.to_pos2(self.orbital_model.after_optim[idx].target.pos),
                         3.,
                         Color32::from_rgb(191, 63, 191),
                         (1., Color32::BLACK),
@@ -220,9 +195,12 @@ impl OrbitalApp {
             }
 
             let render_orbit = |orbital_state: &OrbitalState| {
-                render_satellite(&painter, to_pos2(orbital_state.satellite.pos));
+                render_satellite(
+                    &painter,
+                    paint_transform.to_pos2(orbital_state.satellite.pos),
+                );
 
-                let earth_pos = to_pos2(self.orbital_params.earth_pos);
+                let earth_pos = paint_transform.to_pos2(self.orbital_params.earth_pos);
                 painter.circle(earth_pos, 10., Color32::WHITE, (1., Color32::BLACK));
 
                 painter.text(
@@ -234,7 +212,7 @@ impl OrbitalApp {
                 );
 
                 painter.circle(
-                    to_pos2(orbital_state.target.pos),
+                    paint_transform.to_pos2(orbital_state.target.pos),
                     5.,
                     Color32::GREEN,
                     (1., Color32::YELLOW),

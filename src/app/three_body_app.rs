@@ -6,7 +6,7 @@ use eframe::{
         Context, Frame, Ui,
     },
     emath::Align2,
-    epaint::{pos2, Color32, FontId, PathShape, Pos2, Rect},
+    epaint::{Color32, FontId, PathShape},
 };
 
 use crate::{
@@ -80,39 +80,14 @@ impl ThreeBodyApp {
             let (response, painter) =
                 ui.allocate_painter(ui.available_size(), egui::Sense::click());
 
-            let to_screen = egui::emath::RectTransform::from_to(
-                Rect::from_min_size(Pos2::ZERO, response.rect.size()),
-                response.rect,
-            );
-            let from_screen = to_screen.inverse();
-
-            let canvas_offset_x = response.rect.width() * 0.5;
-            let canvas_offset_y = response.rect.height() * 0.5;
+            let paint_transform = self.transform.into_paint(&response);
 
             if ui.ui_contains_pointer() {
                 ui.input(|i| {
                     self.transform
-                        .handle_mouse(i, [canvas_offset_x, canvas_offset_y])
+                        .handle_mouse(i, paint_transform.canvas_offset())
                 });
             }
-
-            let transform = self.transform;
-
-            let to_pos2 = |pos: Vec2<f64>| {
-                let pos = transform.transform_point([pos.x as f32, pos.y as f32]);
-                to_screen.transform_pos(pos2(canvas_offset_x + pos.x, canvas_offset_y - pos.y))
-            };
-
-            let from_pos2 = |pos: Pos2| {
-                let pos = from_screen.transform_pos(pos);
-                let pos = self
-                    .transform
-                    .inverse_transform_point([pos.x - canvas_offset_x, canvas_offset_y - pos.y]);
-                Vec2 {
-                    x: pos.x as f64,
-                    y: pos.y as f64,
-                }
-            };
 
             if let Some(ref err) = self.error_msg {
                 painter.text(
@@ -126,12 +101,12 @@ impl ThreeBodyApp {
 
             if response.clicked() {
                 if let Some(mouse_pos) = response.interact_pointer_pos() {
-                    self.set_simulation(from_pos2(mouse_pos));
+                    self.set_simulation(paint_transform.from_pos2(mouse_pos));
                 }
             }
 
             let render_path = |poses: &[Vec2<f64>], color: Color32| {
-                let pos = poses.iter().map(|x| to_pos2(*x)).collect();
+                let pos = poses.iter().map(|x| paint_transform.to_pos2(*x)).collect();
                 let path = PathShape::line(pos, (2., color));
                 painter.add(path);
             };
@@ -152,13 +127,13 @@ impl ThreeBodyApp {
                     let moon_pos = three_params.moon_pos;
                     let moon_orbit_r = moon_pos.length();
                     painter.circle_stroke(
-                        to_pos2(Vec2::zero()),
-                        (moon_orbit_r + three_params.target_r) as f32 * transform.scale(),
+                        paint_transform.to_pos2(Vec2::zero()),
+                        (moon_orbit_r + three_params.target_r) as f32 * self.transform.scale(),
                         (1., Color32::from_rgb(191, 191, 191)),
                     );
                     painter.circle_stroke(
-                        to_pos2(Vec2::zero()),
-                        (moon_orbit_r - three_params.target_r) as f32 * transform.scale(),
+                        paint_transform.to_pos2(Vec2::zero()),
+                        (moon_orbit_r - three_params.target_r) as f32 * self.transform.scale(),
                         (1., Color32::from_rgb(191, 191, 191)),
                     );
                 }
@@ -183,9 +158,12 @@ impl ThreeBodyApp {
             }
 
             let render_orbit = |orbital_state: &ThreeBodyState| {
-                render_satellite(&painter, to_pos2(orbital_state.satellite.pos));
+                render_satellite(
+                    &painter,
+                    paint_transform.to_pos2(orbital_state.satellite.pos),
+                );
 
-                let pos = to_pos2(self.orbital_params.earth_pos);
+                let pos = paint_transform.to_pos2(self.orbital_params.earth_pos);
                 painter.circle(pos, 10., Color32::WHITE, (1., Color32::BLACK));
 
                 painter.text(
@@ -201,7 +179,7 @@ impl ThreeBodyApp {
                 render_orbit(&self.three_body_state);
 
                 let moon = &self.three_body_state.moon;
-                let moon_pos = to_pos2(moon.pos);
+                let moon_pos = paint_transform.to_pos2(moon.pos);
                 painter.circle(moon_pos, 5., Color32::WHITE, (1., Color32::BLACK));
                 painter.text(
                     moon_pos,
@@ -228,7 +206,7 @@ impl ThreeBodyApp {
                     .get(self.t as usize)
                     .map(|state| state.moon.pos)
                 {
-                    let moon_pos = to_pos2(moon_pos);
+                    let moon_pos = paint_transform.to_pos2(moon_pos);
                     painter.circle(moon_pos, 5., Color32::WHITE, (1., Color32::BLACK));
                     painter.text(
                         moon_pos,
