@@ -18,7 +18,7 @@ use crate::{
     xor128::Xor128,
 };
 
-use super::orbit_app::render_satellite;
+use super::{orbit_app::render_satellite, transform::Transform};
 
 const SCALE: f32 = 50.;
 
@@ -26,6 +26,7 @@ pub struct ThreeBodyApp {
     direct_control: bool,
     paused: bool,
     orbital_params: OrbitalParams,
+    transform: Transform,
     prediction_horizon: usize,
     t: f64,
     randomize: bool,
@@ -50,6 +51,7 @@ impl ThreeBodyApp {
             paused: false,
             orbital_params,
             prediction_horizon: 250,
+            transform: Transform::new(SCALE),
             t: 0.,
             randomize: true,
             rng: Xor128::new(3232123),
@@ -87,18 +89,26 @@ impl ThreeBodyApp {
             let canvas_offset_x = response.rect.width() * 0.5;
             let canvas_offset_y = response.rect.height() * 0.5;
 
+            if ui.ui_contains_pointer() {
+                ui.input(|i| {
+                    self.transform
+                        .handle_zoom(i, [canvas_offset_x, canvas_offset_y])
+                });
+            }
+
+            let transform = self.transform;
+
             let to_pos2 = |pos: Vec2<f64>| {
-                to_screen.transform_pos(pos2(
-                    canvas_offset_x + pos.x as f32 * SCALE,
-                    canvas_offset_y - pos.y as f32 * SCALE,
-                ))
+                let pos = transform.transform_point([pos.x as f32, pos.y as f32]);
+                to_screen.transform_pos(pos2(canvas_offset_x + pos.x, canvas_offset_y - pos.y))
             };
 
             let from_pos2 = |pos: Pos2| {
+                let pos = transform.inverse_transform_point(pos);
                 let model_pos = from_screen.transform_pos(pos);
                 Vec2 {
-                    x: ((model_pos.x - canvas_offset_x) / SCALE) as f64,
-                    y: ((canvas_offset_y - model_pos.y) / SCALE) as f64,
+                    x: (model_pos.x - canvas_offset_x) as f64,
+                    y: (canvas_offset_y - model_pos.y) as f64,
                 }
             };
 
@@ -141,12 +151,12 @@ impl ThreeBodyApp {
                     let moon_orbit_r = moon_pos.length();
                     painter.circle_stroke(
                         to_pos2(Vec2::zero()),
-                        (moon_orbit_r + three_params.target_r) as f32 * SCALE,
+                        (moon_orbit_r + three_params.target_r) as f32 * transform.scale(),
                         (1., Color32::from_rgb(191, 191, 191)),
                     );
                     painter.circle_stroke(
                         to_pos2(Vec2::zero()),
-                        (moon_orbit_r - three_params.target_r) as f32 * SCALE,
+                        (moon_orbit_r - three_params.target_r) as f32 * transform.scale(),
                         (1., Color32::from_rgb(191, 191, 191)),
                     );
                 }

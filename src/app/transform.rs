@@ -7,6 +7,7 @@ use eframe::{
 /// A type representing transformation, including scale and offset.
 ///
 /// It does not include rotation.
+#[derive(Clone, Copy, Debug)]
 pub(crate) struct Transform {
     scale: f32,
     offset: [f32; 2],

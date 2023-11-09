@@ -247,12 +247,13 @@ impl BicycleApp {
                 bicycle.pos
             };
 
+            let canvas_offset_x = response.rect.width() * 0.5;
+            let canvas_offset_y = response.rect.height() * 0.5;
+
             if ui.ui_contains_pointer() {
                 ui.input(|i| {
-                    self.transform.handle_zoom(
-                        i,
-                        [response.rect.width() * 0.5, response.rect.height() * 0.5],
-                    )
+                    self.transform
+                        .handle_zoom(i, [canvas_offset_x, canvas_offset_y])
                 });
             }
 
@@ -260,8 +261,6 @@ impl BicycleApp {
                 self.transform
                     .follow([bicycle_pos.x as f32, bicycle_pos.y as f32]);
             }
-            let canvas_offset_x = response.rect.width() * 0.5;
-            let canvas_offset_y = response.rect.height() * 0.5;
 
             let to_pos2 = |pos: Vec2<f64>| {
                 let pos = self.transform.transform_point([pos.x as f32, pos.y as f32]);
