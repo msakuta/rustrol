@@ -1,9 +1,9 @@
 use eframe::{
-    egui::{self, Color32, Context, Frame, Pos2, Rect, Ui},
-    epaint::{pos2, vec2, PathShape},
+    egui::{self, Color32, Context, Frame, Ui},
+    epaint::{vec2, PathShape},
 };
 
-use super::{LANDER_LEG_OFFSET, SCALE};
+use super::{transform::Transform, LANDER_LEG_OFFSET, SCALE};
 use crate::{
     models::lander::{
         lander_simulate_step, simulate_lander, LanderModel, LanderParams, LanderState,
@@ -16,6 +16,7 @@ pub struct LanderApp {
     playback_speed: f32,
     paused: bool,
     lander_params: LanderParams,
+    transform: Transform,
     direct_control: bool,
     lander_state: LanderState,
     lander_model: LanderModel,
@@ -41,6 +42,7 @@ impl LanderApp {
             playback_speed: 0.5,
             paused: false,
             lander_params,
+            transform: Transform::new(SCALE),
             direct_control: false,
             lander_state,
             lander_model,
@@ -55,35 +57,21 @@ impl LanderApp {
             let (response, painter) =
                 ui.allocate_painter(ui.available_size(), egui::Sense::click());
 
-            let to_screen = egui::emath::RectTransform::from_to(
-                Rect::from_min_size(Pos2::ZERO, response.rect.size()),
-                response.rect,
-            );
-            let from_screen = to_screen.inverse();
+            if ui.ui_contains_pointer() {
+                ui.input(|i| {
+                    self.transform.handle_mouse(
+                        i,
+                        [response.rect.width() * 0.5, response.rect.height() * 0.5],
+                    )
+                });
+            }
 
-            let canvas_offset_x = response.rect.width() * 0.5;
-            let canvas_offset_y = response.rect.height() * 0.8;
-
-            let to_pos2 = |pos: Vec2<f64>| {
-                to_screen.transform_pos(pos2(
-                    canvas_offset_x + pos.x as f32 * SCALE,
-                    canvas_offset_y - pos.y as f32 * SCALE,
-                ))
-            };
-
-            let to_vec2 = |pos: Vec2<f64>| vec2(pos.x as f32 * SCALE, -pos.y as f32 * SCALE);
-
-            let from_pos2 = |pos: Pos2| {
-                let model_pos = from_screen.transform_pos(pos);
-                Vec2 {
-                    x: ((model_pos.x - canvas_offset_x) / SCALE) as f64,
-                    y: ((canvas_offset_y - model_pos.y) / SCALE) as f64,
-                }
-            };
+            let paint_transform = self.transform.into_paint(&response);
 
             if response.clicked() {
                 if let Some(mouse_pos) = response.interact_pointer_pos() {
-                    match simulate_lander(from_pos2(mouse_pos), &self.lander_params) {
+                    match simulate_lander(paint_transform.from_pos2(mouse_pos), &self.lander_params)
+                    {
                         Ok(res) => self.lander_model = res,
                         Err(e) => self.error_msg = Some(e.to_string()),
                     }
@@ -93,11 +81,11 @@ impl LanderApp {
 
             painter.line_segment(
                 [
-                    to_pos2(Vec2 {
+                    paint_transform.to_pos2(Vec2 {
                         x: -50.,
                         y: -LANDER_LEG_OFFSET,
                     }),
-                    to_pos2(Vec2 {
+                    paint_transform.to_pos2(Vec2 {
                         x: 50.,
                         y: -LANDER_LEG_OFFSET,
                     }),
@@ -111,11 +99,11 @@ impl LanderApp {
             for x in [-3., 3.] {
                 painter.line_segment(
                     [
-                        to_pos2(Vec2 {
+                        paint_transform.to_pos2(Vec2 {
                             x,
                             y: -LANDER_LEG_OFFSET,
                         }),
-                        to_pos2(Vec2 {
+                        paint_transform.to_pos2(Vec2 {
                             x,
                             y: GOAL_POST_HEIGHT,
                         }),
@@ -127,7 +115,7 @@ impl LanderApp {
                     [[0., 0.], [1., -0.5], [0., -1.]]
                         .into_iter()
                         .map(|ofs| {
-                            to_pos2(Vec2 {
+                            paint_transform.to_pos2(Vec2 {
                                 x: x + ofs[0],
                                 y: GOAL_POST_HEIGHT + ofs[1],
                             })
@@ -139,7 +127,7 @@ impl LanderApp {
             }
 
             painter.circle(
-                to_pos2(self.lander_model.target),
+                paint_transform.to_pos2(self.lander_model.target),
                 5.,
                 Color32::RED,
                 (1., Color32::BROWN),
@@ -149,12 +137,12 @@ impl LanderApp {
                 let pos = lander_state
                     .prediction
                     .iter()
-                    .map(|x| to_pos2(*x))
+                    .map(|x| paint_transform.to_pos2(*x))
                     .collect();
                 let path = PathShape::line(pos, (2., Color32::from_rgb(127, 127, 0)));
                 painter.add(path);
 
-                let lander_pos = to_pos2(lander_state.pos).to_vec2();
+                let lander_pos = paint_transform.to_pos2(lander_state.pos).to_vec2();
                 let orientation = lander_state.heading;
                 let rotation = [
                     orientation.cos() as f32,
@@ -167,10 +155,12 @@ impl LanderApp {
                         vertices
                             .into_iter()
                             .map(|ofs| {
-                                pos2(
+                                let vec = self.transform.transform_vector(vec2(
                                     rotation[0] * ofs[0] + rotation[1] * ofs[1],
                                     rotation[2] * ofs[0] + rotation[3] * ofs[1],
-                                ) + lander_pos
+                                )) / SCALE
+                                    + lander_pos;
+                                vec.to_pos2()
                             })
                             .collect(),
                         Color32::BLUE,
@@ -198,8 +188,8 @@ impl LanderApp {
                 ]));
 
                 painter.arrow(
-                    to_pos2(lander_state.pos),
-                    to_vec2(lander_state.velo * 2.),
+                    paint_transform.to_pos2(lander_state.pos),
+                    paint_transform.to_vec2(lander_state.velo * 2.),
                     (2., Color32::from_rgb(127, 0, 127)).into(),
                 );
             };

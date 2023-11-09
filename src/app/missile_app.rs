@@ -1,7 +1,7 @@
 use eframe::{
     egui::{self, Context, Frame, Ui},
     emath::Align2,
-    epaint::{pos2, Color32, FontId, PathShape, Pos2, Rect},
+    epaint::{pos2, Color32, FontId, PathShape},
 };
 
 use crate::{

@@ -2,7 +2,7 @@ use cgmath::{Matrix3, Point2, Vector2};
 use eframe::{
     egui::{self, InputState, Response},
     emath::RectTransform,
-    epaint::{pos2, Pos2, Rect, Vec2},
+    epaint::{pos2, vec2, Pos2, Rect, Vec2},
 };
 
 /// A type representing transformation, including scale and offset.
@@ -38,6 +38,16 @@ impl Transform {
             cgmath::Point2::new(v.x, v.y),
         );
         pos2(ret.x, ret.y)
+    }
+
+    pub(crate) fn transform_vector(&self, v: impl Into<Vec2>) -> Vec2 {
+        let m = self.view_transform();
+        let v = v.into();
+        let ret = <Matrix3<f32> as cgmath::Transform<Point2<f32>>>::transform_vector(
+            &m,
+            cgmath::Vector2::new(v.x, v.y),
+        );
+        vec2(ret.x, ret.y)
     }
 
     pub(crate) fn inverse_transform_point(&self, v: impl Into<Pos2>) -> Pos2 {
@@ -141,6 +151,13 @@ impl PaintTransform {
             self.canvas_offset[0] + pos.x,
             self.canvas_offset[1] - pos.y,
         ))
+    }
+
+    pub(crate) fn to_vec2(&self, pos: crate::vec2::Vec2<f64>) -> Vec2 {
+        let pos = self
+            .transform
+            .transform_vector([pos.x as f32, pos.y as f32]);
+        vec2(pos.x, -pos.y)
     }
 
     pub(crate) fn from_pos2(&self, pos: Pos2) -> crate::vec2::Vec2<f64> {
