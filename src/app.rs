@@ -3,6 +3,7 @@ mod lander_app;
 mod missile_app;
 mod orbit_app;
 mod three_body_app;
+mod transform;
 
 use eframe::egui::{self, Context, Ui};
 
