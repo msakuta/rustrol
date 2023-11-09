@@ -1,9 +1,9 @@
-use cgmath::{Matrix3, Point2, Transform, Vector2};
 use eframe::{
     egui::{self, Context, Frame, InputState, Ui},
     emath::Align2,
     epaint::{pos2, Color32, FontId, PathShape, Pos2, Rect},
 };
+use glam::{Mat3, Vec2 as Vector2};
 
 use crate::{
     models::bicycle::{
@@ -58,13 +58,14 @@ impl BicycleApp {
         }
     }
 
-    fn view_transform(&self) -> Matrix3<f32> {
-        Matrix3::from_scale(self.view_scale) * Matrix3::from_translation(self.view_offset.into())
+    fn view_transform(&self) -> Mat3 {
+        Mat3::from_scale(glam::Vec2::splat(self.view_scale))
+            * Mat3::from_translation(self.view_offset.into())
     }
 
-    fn inverse_view_transform(&self) -> Matrix3<f32> {
-        Matrix3::from_translation(-cgmath::Vector2::from(self.view_offset))
-            * Matrix3::from_scale(1. / self.view_scale)
+    fn inverse_view_transform(&self) -> Mat3 {
+        Mat3::from_translation(-Vector2::from(self.view_offset))
+            * Mat3::from_scale(glam::Vec2::splat(1. / self.view_scale))
     }
 
     pub fn update(&mut self, ctx: &Context) {
@@ -267,7 +268,7 @@ impl BicycleApp {
             let new_offset = transform_point(&self.inverse_view_transform(), interact_pos_a);
             let diff = new_offset - old_offset;
             let diff = -Vector2::new(diff[0], diff[1]);
-            self.view_offset = (Vector2::<f32>::from(self.view_offset) + diff).into();
+            self.view_offset = (Vector2::from(self.view_offset) + diff).into();
         }
     }
 
@@ -553,7 +554,7 @@ impl BicycleApp {
 }
 
 /// Transform a point. Equivalent to `(m * v.extend(1.)).truncate()`.
-fn transform_point(m: &Matrix3<f32>, v: impl Into<Point2<f32>>) -> Point2<f32> {
+fn transform_point(m: &Mat3, v: impl Into<glam::Vec2>) -> glam::Vec2 {
     // I don't really get the point of having the vector and the point as different types.
-    <Matrix3<f32> as Transform<Point2<f32>>>::transform_point(m, v.into())
+    m.transform_point2(v.into())
 }
