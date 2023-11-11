@@ -146,10 +146,14 @@ impl BicycleNavigation {
                 return;
             }
             BicyclePath::PathSearch => {
+                self.path.clear();
+                let Some(goal) = params.path_params.search_goal else {
+                    return;
+                };
                 let search_size = params.path_params.search_size;
                 self.env.search_bounds = [-search_size, -search_size, search_size, search_size];
                 let agent = AgentState::new(0., 0., 0.);
-                let goal = AgentState::new(40., 40., 0.);
+                let goal = AgentState::new(goal.x, goal.y, 0.);
                 let mut a_params = AvoidanceParams {
                     avoidance_mode: params.path_params.avoidance,
                     search_state: &mut self.search_state,
@@ -177,7 +181,10 @@ impl BicycleNavigation {
 
     pub(crate) fn update_path(&mut self, bicycle: &Bicycle, params: &BicycleParams) {
         if matches!(params.path_shape, BicyclePath::PathSearch) {
-            let goal = AgentState::new(40., 40., 0.);
+            let Some(goal) = params.path_params.search_goal else {
+                return;
+            };
+            let goal = AgentState::new(goal.x, goal.y, 0.);
             let mut a_params = AvoidanceParams {
                 avoidance_mode: params.path_params.avoidance,
                 search_state: &mut self.search_state,
@@ -252,6 +259,7 @@ pub struct PathParams {
     pub avoidance: AvoidanceMode,
     pub expand_states: usize,
     pub search_size: f64,
+    pub search_goal: Option<Vec2<f64>>,
 }
 
 impl Default for PathParams {
@@ -266,6 +274,7 @@ impl Default for PathParams {
             avoidance: AvoidanceMode::Kinematic,
             expand_states: 10,
             search_size: SEARCH_WIDTH,
+            search_goal: None,
         }
     }
 }

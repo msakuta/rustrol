@@ -20,7 +20,7 @@ impl SearchState {
                         transform.to_pos2(node.state.into()),
                         transform.to_pos2(from_node.state.into()),
                     ],
-                    (1., brush),
+                    (0.5, brush),
                 );
             }
         }
@@ -32,7 +32,7 @@ impl SearchState {
                 .collect();
             painter.add(PathShape::line(
                 points,
-                (2., Color32::from_rgb(0, 255, 191)),
+                (3., Color32::from_rgb(0, 191, 127)),
             ));
         }
     }

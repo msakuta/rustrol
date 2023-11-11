@@ -44,7 +44,7 @@ impl BicycleApp {
                 }
             };
         Self {
-            realtime: false,
+            realtime: true,
             paused: false,
             bicycle: Bicycle::new(),
             bicycle_result,
@@ -157,7 +157,7 @@ impl BicycleApp {
                     .radio_value(
                         &mut self.params.path_shape,
                         BicyclePath::PathSearch,
-                        "Path Search",
+                        "Path Search (click to set goal)",
                     )
                     .changed();
             });
@@ -262,6 +262,7 @@ impl BicycleApp {
                 };
                 self.t = 0.;
             }
+            self.error_msg = None;
         }
 
         ui.label("Max iter:");
@@ -321,16 +322,22 @@ impl BicycleApp {
             const YELLOW: Color32 = Color32::from_rgb(127, 127, 0);
             const RED: Color32 = Color32::from_rgb(255, 0, 0);
 
-            if matches!(self.params.path_shape, BicyclePath::ClickedPoint) {
-                if response.clicked() {
-                    println!("Clicked {:?}", response.interact_pointer_pos());
-                    if let Some(pointer_pos) = response.interact_pointer_pos() {
-                        self.params
-                            .path_params
-                            .path_waypoints
-                            .push(paint_transform.from_pos2(pointer_pos));
-                        self.nav.reset_path(&self.params);
-                        self.nav.prev_path_node = 0.;
+            if response.clicked() {
+                if let Some(pointer_pos) = response.interact_pointer_pos() {
+                    match self.params.path_shape {
+                        BicyclePath::ClickedPoint => {
+                            self.params
+                                .path_params
+                                .path_waypoints
+                                .push(paint_transform.from_pos2(pointer_pos));
+                            self.nav.reset_path(&self.params);
+                            self.nav.prev_path_node = 0.;
+                        }
+                        BicyclePath::PathSearch => {
+                            self.params.path_params.search_goal =
+                                Some(paint_transform.from_pos2(pointer_pos));
+                        }
+                        _ => {}
                     }
                 }
             }
@@ -545,6 +552,17 @@ impl BicycleApp {
                     (Vec2::zero(), 0., 0.)
                 }
             };
+
+            if matches!(self.params.path_shape, BicyclePath::PathSearch) {
+                if let Some(goal) = self.params.path_params.search_goal {
+                    painter.circle(
+                        paint_transform.to_pos2(goal),
+                        7.,
+                        Color32::from_rgb(0, 127, 127),
+                        (1., Color32::BLACK),
+                    );
+                }
+            }
 
             const DEG_PER_RAD: f64 = 180. / std::f64::consts::PI;
 
