@@ -9,22 +9,26 @@ use cgmath::Vector2;
 
 // pub(crate) use self::render::AvoidanceRenderParams;
 use self::{
-    sampler::{ForwardKinematicSampler, StateSampler},
+    sampler::{ForwardKinematicSampler, SpaceSampler, StateSampler},
     search::{can_connect_goal, insert_to_grid_map, search, to_cell},
 };
-use super::{
-    // interpolation::interpolate, wrap_angle, Agent, AgentClass, AgentTarget, GameEnv, AGENT_SCALE,
-    Bicycle,
-    BicycleParams,
-    STEERING_SPEED,
-    WHEEL_BASE,
-};
+use super::{Bicycle, BicycleParams, STEERING_SPEED, WHEEL_BASE};
 use crate::{
     interpolation::{lerp, AsPoint, LerpPoint},
     vec2::Vec2, // collision::{CollisionShape, Obb},
     // entity::Entity,
     xor128::Xor128,
 };
+
+const SEARCH_WIDTH: f64 = 50.;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AvoidanceMode {
+    Kinematic,
+    Space,
+    // Rrt,
+    // RrtStar,
+}
 
 #[derive(Clone, Copy, Debug)]
 pub struct AgentState {
@@ -237,12 +241,22 @@ pub struct SearchState {
 }
 
 impl SearchState {
-    pub fn get_path(&self) -> Option<Vec<Vec2<f64>>> {
+    /// Return the path if it was found, resampled in a given interval
+    pub fn get_path(&self, interval: f64) -> Option<Vec<Vec2<f64>>> {
         self.found_path.as_ref().map(|path| {
-            path.iter()
-                .rev()
-                .map(|i| self.search_tree[*i].state.into())
-                .collect()
+            let mut ret = vec![];
+            for (&next, &prev) in path.iter().zip(path.iter().skip(1)).rev() {
+                let prev: Vec2<f64> = self.search_tree[prev].state.into();
+                let next: Vec2<f64> = self.search_tree[next].state.into();
+                let segment_delta = next - prev;
+                let segment_len = segment_delta.length();
+                let segment_splits = (segment_len / interval) as i32;
+                for i in 0..segment_splits {
+                    let fr = i as f64 / segment_splits as f64;
+                    ret.push(prev + segment_delta * fr);
+                }
+            }
+            ret
         })
     }
 }
@@ -251,6 +265,7 @@ impl SearchState {
 ///
 /// Returns true if the path is found
 pub(super) fn avoidance_search(
+    avoidance_mode: AvoidanceMode,
     search_state: &mut Option<SearchState>,
     env: &mut SearchEnv,
     agent: &AgentState,
@@ -258,24 +273,29 @@ pub(super) fn avoidance_search(
     params: &BicycleParams,
     collision_callback: &impl Fn(AgentState) -> bool,
 ) -> bool {
-    // match avoidance_mode {
-    // AvoidanceMode::Kinematic => {
-    avoidance_search_gen::<ForwardKinematicSampler>(
-        search_state,
-        agent,
-        &goal,
-        env,
-        false,
-        params,
-        collision_callback,
-    )
-    // true
-    // }
-    // AvoidanceMode::Rrt => self.avoidance_search_gen::<SpaceSampler>(&mut env, backward),
-    // AvoidanceMode::RrtStar => {
-    //     self.avoidance_search_gen::<RrtStarSampler>(&mut env, backward)
-    // }
-    // }
+    match avoidance_mode {
+        AvoidanceMode::Kinematic => avoidance_search_gen::<ForwardKinematicSampler>(
+            search_state,
+            agent,
+            &goal,
+            env,
+            false,
+            params,
+            collision_callback,
+        ),
+        AvoidanceMode::Space => avoidance_search_gen::<SpaceSampler>(
+            search_state,
+            agent,
+            &goal,
+            env,
+            false,
+            params,
+            collision_callback,
+        ), // AvoidanceMode::Rrt => self.avoidance_search_gen::<SpaceSampler>(&mut env, backward),
+           // AvoidanceMode::RrtStar => {
+           //     self.avoidance_search_gen::<RrtStarSampler>(&mut env, backward)
+           // }
+    }
 }
 
 /// Templatized logic for searching avoidance path. The type argument speicfy how to
@@ -430,6 +450,7 @@ pub(super) struct SearchEnv {
     skipped_nodes: usize,
     wheel_base: f64,
     tree_size: usize,
+    search_bounds: [f64; 4],
 }
 
 impl SearchEnv {
@@ -440,6 +461,7 @@ impl SearchEnv {
             skipped_nodes: 0,
             wheel_base,
             tree_size: 0,
+            search_bounds: [-SEARCH_WIDTH, -SEARCH_WIDTH, SEARCH_WIDTH, SEARCH_WIDTH],
         }
     }
 }

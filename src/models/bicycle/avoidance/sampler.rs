@@ -1,13 +1,13 @@
 //! Random search tree's sampling methods
 
-use cgmath::{MetricSpace, Vector2};
+use cgmath::{InnerSpace, MetricSpace, Vector2};
 // use rand::{distributions::Uniform, prelude::Distribution};
 
 use super::{
     super::{BicycleParams, MAX_THRUST},
     compare_distance,
     search::{for_each_neighbor, to_cell},
-    wrap_angle, AgentState, GridMap, SearchEnv, SearchNode,
+    wrap_angle, AgentState, GridMap, SearchEnv, SearchNode, CELL_SIZE, DIST_RADIUS, DIST_THRESHOLD,
 };
 
 /// A trait to sample states for path finding. It is an abstraction of multiple implementation of path finding.
@@ -262,105 +262,111 @@ fn heading_from_delta(delta: &Vector2<f64>, next_direction: f64) -> f64 {
     }
 }
 
-// /// Spatially random sampler. It is closer to pure RRT, which guarantees asymptotically filling space coverage
-// pub(super) struct SpaceSampler(f64);
+/// Spatially random sampler. It is closer to pure RRT, which guarantees asymptotically filling space coverage
+pub(super) struct SpaceSampler(f64);
 
-// impl SpaceSampler {
-//     fn calculate_cost(&self, distance: f64) -> f64 {
-//         self.0 + distance
-//     }
-// }
+impl SpaceSampler {
+    fn calculate_cost(&self, distance: f64) -> f64 {
+        self.0 + distance
+    }
+}
 
-// const STEER_DISTANCE: f64 = DIST_RADIUS * 2.5;
+const STEER_DISTANCE: f64 = DIST_RADIUS * 2.5;
 
-// impl StateSampler for SpaceSampler {
-//     fn new(_env: &SearchEnv) -> Self {
-//         Self(0.)
-//     }
+impl StateSampler for SpaceSampler {
+    fn new(_env: &SearchEnv) -> Self {
+        Self(0.)
+    }
 
-//     fn compare_state(s1: &AgentState, s2: &AgentState) -> bool {
-//         compare_distance(s1, s2, DIST_THRESHOLD)
-//     }
+    fn compare_state(s1: &AgentState, s2: &AgentState) -> bool {
+        compare_distance(s1, s2, DIST_THRESHOLD)
+    }
 
-//     fn initial_search(agent: &Agent, _backward: bool) -> Vec<SearchNode> {
-//         let root = SearchNode::new(agent.to_state(), 0., 0., 1.);
-//         vec![root]
-//     }
+    fn initial_search(
+        agent: &AgentState,
+        _params: &BicycleParams,
+        _backward: bool,
+    ) -> Vec<SearchNode> {
+        let root = SearchNode::new(*agent, 0., 1.);
+        vec![root]
+    }
 
-//     fn sample(
-//         &mut self,
-//         nodes: &[SearchNode],
-//         env: &SearchEnv,
-//         grid_map: &GridMap,
-//         _collision_check: impl FnMut(AgentState, AgentState, f64, f64, f64) -> (bool, usize),
-//     ) -> Option<(usize, SearchNode)> {
-//         let position = Vector2::new(
-//             rand::random::<f64>() * env.game.xs as f64,
-//             rand::random::<f64>() * env.game.ys as f64,
-//         );
+    fn sample(
+        &mut self,
+        nodes: &[SearchNode],
+        env: &mut SearchEnv,
+        grid_map: &GridMap,
+        _collision_check: impl FnMut(AgentState, AgentState, f64, f64, f64) -> (bool, usize),
+    ) -> Option<(usize, SearchNode)> {
+        let position = Vector2::new(
+            env.rng.next() * (env.search_bounds[2] - env.search_bounds[0]) + env.search_bounds[0],
+            env.rng.next() * (env.search_bounds[3] - env.search_bounds[1]) + env.search_bounds[1],
+            // rand::random::<f64>() * env.game.xs as f64,
+            // rand::random::<f64>() * env.game.ys as f64,
+        );
 
-//         let (i, closest_node) = find_closest_node(nodes, position, grid_map)?;
+        let (i, closest_node) = find_closest_node(nodes, position, grid_map)?;
 
-//         self.0 = closest_node.cost;
-//         let closest_point = Vector2::from(closest_node.state);
-//         let distance = closest_point.distance(position).min(STEER_DISTANCE);
-//         let steer = (position - closest_point).normalize() * distance;
-//         let position = closest_point + steer;
+        self.0 = closest_node.cost;
+        let closest_point = Vector2::from(closest_node.state);
+        let distance = closest_point.distance(position).min(STEER_DISTANCE);
+        let steer = (position - closest_point).normalize() * distance;
+        let position = closest_point + steer;
 
-//         let state = AgentState::new(position.x, position.y, closest_node.state.heading);
-//         let direction = closest_node.speed.signum();
+        let state = AgentState::new(position.x, position.y, closest_node.state.heading);
+        let direction = closest_node.speed.signum();
 
-//         Some((
-//             i,
-//             SearchNode::new(state, self.calculate_cost(distance), 0., direction),
-//         ))
-//     }
-// }
+        Some((
+            i,
+            SearchNode::new(state, self.calculate_cost(distance), direction),
+        ))
+    }
+}
 
-// /// Use grid map to quickly find the closest node
-// fn find_closest_node<'a, 'b>(
-//     nodes: &'a [SearchNode],
-//     position: Vector2<f64>,
-//     grid_map: &'b GridMap,
-// ) -> Option<(usize, &'a SearchNode)> {
-//     let center = (
-//         (position.x / CELL_SIZE) as i32,
-//         (position.y / CELL_SIZE) as i32,
-//     );
-//     const MAX_SEARCH_CELL_RADIUS: i32 = 10;
-//     // Gradually expand cells to scan
-//     for cell_radius in 0..MAX_SEARCH_CELL_RADIUS {
-//         let mut closest = None;
-//         for iy in -cell_radius..=cell_radius {
-//             for ix in -cell_radius..=cell_radius {
-//                 let Some(cell_nodes) = grid_map.get(&[center.0 + ix, center.1 + iy]) else {
-//                     continue;
-//                 };
-//                 closest =
-//                     cell_nodes
-//                         .iter()
-//                         .fold(closest, |acc: Option<(usize, &SearchNode)>, &ib| {
-//                             let b = &nodes[ib];
-//                             if let Some((ia, a)) = acc {
-//                                 let distance_a = Vector2::from(a.state).distance(position);
-//                                 let distance_b = Vector2::from(b.state).distance(position);
-//                                 if distance_a < distance_b {
-//                                     Some((ia, a))
-//                                 } else {
-//                                     Some((ib, b))
-//                                 }
-//                             } else {
-//                                 Some((ib, b))
-//                             }
-//                         });
-//             }
-//         }
-//         if let Some((i, closest_node)) = closest {
-//             return Some((i, closest_node));
-//         }
-//     }
-//     None
-// }
+/// Use grid map to quickly find the closest node
+fn find_closest_node<'a, 'b>(
+    nodes: &'a [SearchNode],
+    position: Vector2<f64>,
+    grid_map: &'b GridMap,
+) -> Option<(usize, &'a SearchNode)> {
+    let center = (
+        position.x.div_euclid(CELL_SIZE) as i32,
+        position.y.div_euclid(CELL_SIZE) as i32,
+    );
+    const MAX_SEARCH_CELL_RADIUS: i32 = 10;
+    // Gradually expand cells to scan
+    for cell_radius in 0..MAX_SEARCH_CELL_RADIUS {
+        let mut closest = None;
+        for iy in -cell_radius..=cell_radius {
+            for ix in -cell_radius..=cell_radius {
+                let Some(cell_nodes) = grid_map.get(&[center.0 + ix, center.1 + iy]) else {
+                    continue;
+                };
+                closest =
+                    cell_nodes
+                        .iter()
+                        .fold(closest, |acc: Option<(usize, &SearchNode)>, &ib| {
+                            let b = &nodes[ib];
+                            if let Some((ia, a)) = acc {
+                                let distance_a = Vector2::from(a.state).distance(position);
+                                let distance_b = Vector2::from(b.state).distance(position);
+                                if distance_a < distance_b {
+                                    Some((ia, a))
+                                } else {
+                                    Some((ib, b))
+                                }
+                            } else {
+                                Some((ib, b))
+                            }
+                        });
+            }
+        }
+        if let Some((i, closest_node)) = closest {
+            return Some((i, closest_node));
+        }
+    }
+    None
+}
 
 // /// Rewiring distance has to be long enough to make RRT* effective
 // pub const REWIRE_DISTANCE: f64 = DIST_RADIUS * 5.;

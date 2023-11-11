@@ -6,8 +6,9 @@ use eframe::{
 
 use crate::{
     models::bicycle::{
-        bicycle_simulate_step, control_bicycle, interpolate_path, simulate_bicycle, Bicycle,
-        BicycleNavigation, BicycleParams, BicyclePath, BicycleResult, MAX_STEERING, MAX_THRUST,
+        bicycle_simulate_step, control_bicycle, interpolate_path, simulate_bicycle, AvoidanceMode,
+        Bicycle, BicycleNavigation, BicycleParams, BicyclePath, BicycleResult, MAX_STEERING,
+        MAX_THRUST,
     },
     transform::{half_rect, Transform},
     vec2::Vec2,
@@ -175,6 +176,23 @@ impl BicycleApp {
                 0.1..=5.0,
             ));
             match self.params.path_shape {
+                BicyclePath::PathSearch => {
+                    ui.label("Search:");
+                    reset_path |= ui
+                        .radio_value(
+                            &mut self.params.path_params.avoidance,
+                            AvoidanceMode::Kinematic,
+                            "Kinematic",
+                        )
+                        .changed();
+                    reset_path |= ui
+                        .radio_value(
+                            &mut self.params.path_params.avoidance,
+                            AvoidanceMode::Space,
+                            "Space",
+                        )
+                        .changed();
+                }
                 BicyclePath::Circle => {
                     ui.label("Circle Radius:");
                     ui.add(egui::widgets::Slider::new(

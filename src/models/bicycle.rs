@@ -11,7 +11,7 @@ use crate::{
     vec2::Vec2,
 };
 
-pub(crate) use self::path_utils::interpolate_path;
+pub(crate) use self::{avoidance::AvoidanceMode, path_utils::interpolate_path};
 use self::{
     avoidance::{avoidance_search, AgentState, SearchEnv, SearchState},
     path_utils::find_closest_node,
@@ -147,6 +147,7 @@ impl BicycleNavigation {
                 let agent = AgentState::new(0., 0., 0.);
                 let goal = AgentState::new(40., 40., 0.);
                 avoidance_search(
+                    params.path_params.avoidance,
                     &mut self.search_state,
                     &mut self.env,
                     &agent,
@@ -172,6 +173,7 @@ impl BicycleNavigation {
         if matches!(params.path_shape, BicyclePath::PathSearch) {
             let goal = AgentState::new(40., 40., 0.);
             let found_path = avoidance_search(
+                params.path_params.avoidance,
                 &mut self.search_state,
                 &mut self.env,
                 &bicycle.into(),
@@ -182,7 +184,7 @@ impl BicycleNavigation {
 
             if found_path {
                 if let Some(sstate) = &self.search_state {
-                    if let Some(path) = sstate.get_path() {
+                    if let Some(path) = sstate.get_path(params.path_params.target_speed) {
                         self.path = path;
                         self.prev_path_node = 0.;
                     }
@@ -239,6 +241,7 @@ pub struct PathParams {
     pub sine_amplitude: f64,
     pub crank_period: f64,
     pub path_waypoints: Vec<Vec2<f64>>,
+    pub avoidance: AvoidanceMode,
 }
 
 impl Default for PathParams {
@@ -250,6 +253,7 @@ impl Default for PathParams {
             sine_amplitude: SINE_AMPLITUDE,
             crank_period: CRANK_PERIOD,
             path_waypoints: vec![],
+            avoidance: AvoidanceMode::Kinematic,
         }
     }
 }
