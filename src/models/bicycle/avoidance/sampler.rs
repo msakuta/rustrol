@@ -5,7 +5,9 @@ use cgmath::{MetricSpace, Vector2};
 
 use super::{
     super::{BicycleParams, MAX_THRUST},
-    compare_distance, wrap_angle, AgentState, GridMap, SearchEnv, SearchNode,
+    compare_distance,
+    search::{for_each_neighbor, to_cell},
+    wrap_angle, AgentState, GridMap, SearchEnv, SearchNode,
 };
 
 /// A trait to sample states for path finding. It is an abstraction of multiple implementation of path finding.
@@ -37,6 +39,7 @@ pub(in super::super) trait StateSampler {
         start: usize,
         nodes: &mut [SearchNode],
         env: &mut SearchEnv,
+        grid_map: &GridMap,
     ) -> bool {
         false
     }
@@ -49,6 +52,7 @@ pub(in super::super) trait StateSampler {
         new_node: usize,
         start: usize,
         collision_check: impl FnMut(AgentState, AgentState, f64, f64, f64) -> (bool, usize),
+        grid_map: &GridMap,
     ) {
     }
 }
@@ -110,19 +114,14 @@ impl StateSampler for ForwardKinematicSampler {
         _grid_map: &GridMap,
         _collision_check: impl FnMut(AgentState, AgentState, f64, f64, f64) -> (bool, usize),
     ) -> Option<(usize, SearchNode)> {
-        let (start, start_node) = {
-            let total_passables = nodes.iter().filter(|node| node.is_passable()).count();
-            if total_passables == 0 {
-                return None;
-            }
-            let candidate = env.rng.nexti() as usize % total_passables;
-            // let candidate = Uniform::from(0..total_passables).sample(&mut rand::thread_rng());
-            nodes
-                .iter()
-                .enumerate()
-                .filter(|(_, node)| node.is_passable())
-                .nth(candidate)?
-        };
+        if nodes.is_empty() {
+            return None;
+        }
+        let start_idx = env.rng.nexti() as usize % nodes.len();
+        let start_node = nodes.get(start_idx)?;
+        if !start_node.is_passable() {
+            return None;
+        }
 
         let direction = start_node.speed.signum();
 
@@ -144,7 +143,7 @@ impl StateSampler for ForwardKinematicSampler {
         self.start_cost = Some(start_node.cost);
 
         Some((
-            start,
+            start_idx,
             SearchNode::new(next, self.calculate_cost(distance), next_direction),
         ))
     }
@@ -155,27 +154,31 @@ impl StateSampler for ForwardKinematicSampler {
         start: usize,
         nodes: &mut [SearchNode],
         env: &mut SearchEnv,
+        grid_map: &GridMap,
     ) -> bool {
         // Check if there is already a "samey" node exists
-        for i in 0..nodes.len() {
+        let mut ret = false;
+        for_each_neighbor(grid_map, to_cell(node.state), |i| {
             if !Self::compare_state(&nodes[i].state, &node.state) {
-                continue;
+                return false;
             }
             let existing_node = &nodes[i];
             let Some(existing_from) = existing_node.from else {
-                continue;
+                return false;
             };
             if i == start || existing_from == start {
                 nodes[i].blocked = false;
                 if nodes[i].blocked {
                     println!("Reviving blocked node {i}");
                 }
+                ret = true;
                 return true;
             }
             env.skipped_nodes += 1;
+            ret = true;
             return true;
-        }
-        false
+        });
+        ret
     }
 
     fn rewire(
@@ -184,22 +187,23 @@ impl StateSampler for ForwardKinematicSampler {
         new_node_id: usize,
         start: usize,
         mut collision_check: impl FnMut(AgentState, AgentState, f64, f64, f64) -> (bool, usize),
+        grid_map: &GridMap,
     ) {
         let node = &nodes[new_node_id];
         let node_state = node.state;
         let next_direction = node.speed.signum();
         let node_steer = node.state.steering;
         let start_state = node.state;
-        for i in 0..nodes.len() {
+        for_each_neighbor(grid_map, to_cell(node.state), |i| {
             if i == new_node_id {
-                continue;
+                return false;
             }
             if !Self::compare_state(&nodes[i].state, &node_state) {
-                continue;
+                return false;
             }
             let existing_node = &nodes[i];
             let Some(existing_from) = existing_node.from else {
-                continue;
+                return false;
             };
             let existing_cost = existing_node.cost;
             if i == start || existing_from == start {
@@ -207,7 +211,7 @@ impl StateSampler for ForwardKinematicSampler {
                 if nodes[i].blocked {
                     println!("Reviving blocked node {i}");
                 }
-                return;
+                return true;
             }
             let Some((to_index, _)) = nodes[existing_from]
                 .to
@@ -216,7 +220,7 @@ impl StateSampler for ForwardKinematicSampler {
                 .enumerate()
                 .find(|(_, j)| *j == i)
             else {
-                continue;
+                return false;
             };
             let distance = Vector2::from(nodes[i].state).distance(Vector2::from(start_state));
             let shortcut_cost = self.calculate_cost(distance);
@@ -231,7 +235,7 @@ impl StateSampler for ForwardKinematicSampler {
                     node_steer,
                 );
                 if hit {
-                    return;
+                    return true;
                 }
                 nodes[i].state.heading = heading_from_delta(&delta, next_direction);
                 nodes[i].cost = shortcut_cost;
@@ -244,7 +248,8 @@ impl StateSampler for ForwardKinematicSampler {
                 nodes[start].to.push(i);
                 // nodes[i].state = node.state;
             }
-        }
+            false
+        });
     }
 }
 

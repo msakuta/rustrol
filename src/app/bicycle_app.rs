@@ -7,8 +7,7 @@ use eframe::{
 use crate::{
     models::bicycle::{
         bicycle_simulate_step, control_bicycle, interpolate_path, simulate_bicycle, Bicycle,
-        BicycleNavigation, BicycleParams, BicyclePath, BicycleResult, MAX_STEERING,
-        MAX_THRUST,
+        BicycleNavigation, BicycleParams, BicyclePath, BicycleResult, MAX_STEERING, MAX_THRUST,
     },
     transform::{half_rect, Transform},
     vec2::Vec2,

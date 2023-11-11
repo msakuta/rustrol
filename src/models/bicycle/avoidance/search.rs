@@ -4,7 +4,7 @@ use std::collections::HashSet;
 
 use cgmath::{MetricSpace, Vector2};
 
-use crate::interpolation::interpolate;
+use crate::{interpolation::interpolate, measure_time};
 
 use super::{
     compare_distance, sampler::StateSampler, AgentState, GridMap, SearchEnv, SearchNode, CELL_SIZE,
@@ -25,6 +25,26 @@ pub(super) fn insert_to_grid_map(grid_map: &mut GridMap, idx: [i32; 2], value: u
 
 pub(super) fn count_from_grid_map(grid_map: &mut GridMap, idx: [i32; 2]) -> usize {
     grid_map.get(&idx).map(|cell| cell.len()).unwrap_or(0)
+}
+
+pub(super) fn for_each_neighbor(
+    grid_map: &GridMap,
+    idx: [i32; 2],
+    mut f: impl FnMut(usize) -> bool,
+) {
+    let [ix, iy] = idx;
+    for jy in (iy - 1)..=(iy + 1) {
+        for jx in (ix - 1)..=(ix + 1) {
+            let Some(cell_nodes) = grid_map.get(&[jx, jy]) else {
+                continue;
+            };
+            for &i in cell_nodes {
+                if f(i) {
+                    return;
+                }
+            }
+        }
+    }
 }
 
 pub(super) fn can_connect_goal(
@@ -107,6 +127,9 @@ pub(super) fn search<S: StateSampler>(
     grid_map: &mut GridMap,
     collision_callback: &impl Fn(AgentState) -> bool,
 ) -> Option<Vec<usize>> {
+    let mut sample_time = 0.;
+    let mut merge_time = 0.;
+    let mut rewire_time = 0.;
     'skip: for _i in 0..env.expand_states {
         let mut sampler = S::new(env);
 
@@ -188,7 +211,10 @@ pub(super) fn search<S: StateSampler>(
 
         let found = 'found: {
             for _ in 0..10 {
-                let (start, node) = sampler.sample(nodes, env, grid_map, collision_check)?;
+                let (res, time) =
+                    measure_time(|| sampler.sample(nodes, env, grid_map, collision_check));
+                let (start, node) = res?;
+                sample_time += time;
                 let cell_count = count_from_grid_map(grid_map, to_cell(node.state));
                 if MAX_CELL_COUNT < cell_count {
                     continue;
@@ -206,7 +232,10 @@ pub(super) fn search<S: StateSampler>(
         let start_state = nodes[start].state;
 
         // let AgentState { x, y, heading } = start_state;
-        if sampler.merge_same_nodes(&node, start, nodes, env) {
+        let (merged, time) =
+            measure_time(|| sampler.merge_same_nodes(&node, start, nodes, env, grid_map));
+        merge_time += time;
+        if merged {
             continue 'skip;
         }
         // println!("stepMove: {:?} -> {:?}", nodes[start], next);
@@ -245,7 +274,10 @@ pub(super) fn search<S: StateSampler>(
 
         nodes.push(node);
 
-        sampler.rewire(nodes, new_node_id, start, collision_check);
+        let (_, time) = measure_time(|| {
+            sampler.rewire(nodes, new_node_id, start, collision_check, grid_map);
+        });
+        rewire_time += time;
 
         if let Some(path) = check_goal(start_set, new_node_id, &goal, nodes) {
             return Some(path);
@@ -253,5 +285,9 @@ pub(super) fn search<S: StateSampler>(
 
         // callback(start, node);
     }
+    println!(
+        "rewire: {:.6}, merge: {:.6}, sample: {:.6}",
+        rewire_time, merge_time, sample_time
+    );
     None
 }
