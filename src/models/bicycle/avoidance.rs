@@ -256,10 +256,19 @@ pub(super) fn avoidance_search(
     agent: &AgentState,
     goal: &AgentState,
     params: &BicycleParams,
+    collision_callback: &impl Fn(AgentState) -> bool,
 ) -> bool {
     // match avoidance_mode {
     // AvoidanceMode::Kinematic => {
-    avoidance_search_gen::<ForwardKinematicSampler>(search_state, agent, &goal, env, false, params)
+    avoidance_search_gen::<ForwardKinematicSampler>(
+        search_state,
+        agent,
+        &goal,
+        env,
+        false,
+        params,
+        collision_callback,
+    )
     // true
     // }
     // AvoidanceMode::Rrt => self.avoidance_search_gen::<SpaceSampler>(&mut env, backward),
@@ -278,6 +287,7 @@ pub(super) fn avoidance_search_gen<Sampler: StateSampler>(
     env: &mut SearchEnv,
     backward: bool,
     params: &BicycleParams,
+    collision_callback: &impl Fn(AgentState) -> bool,
 ) -> bool {
     // println!(
     //     "search invoked: state: {} goal: {:?}",
@@ -317,8 +327,14 @@ pub(super) fn avoidance_search_gen<Sampler: StateSampler>(
                 // Descending the tree is not a good way to sample a random node in a tree, since
                 // the chances are much higher on shallow nodes. We want to give chances uniformly
                 // among all nodes in the tree, so we randomly pick one from a linear list of all nodes.
-                let path =
-                    search::<Sampler>(&sstate.start_set, goal, env, nodes, &mut sstate.grid_map);
+                let path = search::<Sampler>(
+                    &sstate.start_set,
+                    goal,
+                    env,
+                    nodes,
+                    &mut sstate.grid_map,
+                    collision_callback,
+                );
 
                 env.tree_size += 1;
 
@@ -353,7 +369,14 @@ pub(super) fn avoidance_search_gen<Sampler: StateSampler>(
                 nodes.len(),
                 grid_map.len()
             );
-            let found_path = search::<Sampler>(&root_set, goal, env, &mut nodes, &mut grid_map);
+            let found_path = search::<Sampler>(
+                &root_set,
+                goal,
+                env,
+                &mut nodes,
+                &mut grid_map,
+                collision_callback,
+            );
 
             *search_state = Some(SearchState {
                 search_tree: nodes,

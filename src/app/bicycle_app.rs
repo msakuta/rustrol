@@ -7,7 +7,7 @@ use eframe::{
 use crate::{
     models::bicycle::{
         bicycle_simulate_step, control_bicycle, interpolate_path, simulate_bicycle, Bicycle,
-        BicycleNavigation, BicycleParams, BicyclePath, BicycleResult, Obstacle, MAX_STEERING,
+        BicycleNavigation, BicycleParams, BicyclePath, BicycleResult, MAX_STEERING,
         MAX_THRUST,
     },
     transform::{half_rect, Transform},
@@ -27,7 +27,6 @@ pub struct BicycleApp {
     playback_speed: f64,
     h_thrust: f64,
     v_thrust: f64,
-    obstacles: Vec<Obstacle>,
     params: BicycleParams,
     nav: BicycleNavigation,
     error_msg: Option<String>,
@@ -55,10 +54,6 @@ impl BicycleApp {
             playback_speed: 0.5,
             h_thrust: 0.,
             v_thrust: 0.,
-            obstacles: vec![Obstacle {
-                min: Vec2::new(10., 10.),
-                max: Vec2::new(30., 30.),
-            }],
             params,
             nav: BicycleNavigation::default(),
             error_msg,
@@ -88,7 +83,7 @@ impl BicycleApp {
                         self.h_thrust,
                         self.v_thrust,
                         self.playback_speed as f64,
-                        &self.obstacles,
+                        &self.nav.obstacles,
                     );
                 } else {
                     if matches!(self.params.path_shape, BicyclePath::PathSearch) {
@@ -99,7 +94,7 @@ impl BicycleApp {
                         &self.nav,
                         &self.params,
                         self.playback_speed,
-                        &self.obstacles,
+                        &self.nav.obstacles,
                     ) {
                         Ok(state) => {
                             self.bicycle.pos = state.pos;
@@ -221,7 +216,7 @@ impl BicycleApp {
                     Vec2 { x: 0., y: 0. },
                     &self.params,
                     &self.nav.path,
-                    &self.obstacles,
+                    &self.nav.obstacles,
                 ) {
                     Ok(res) => (res, None),
                     Err(e) => {
@@ -344,7 +339,7 @@ impl BicycleApp {
             );
             render_grid(GRID_SIZE, (2., Color32::from_rgb(192, 192, 192)).into());
 
-            for obstacle in &self.obstacles {
+            for obstacle in &self.nav.obstacles {
                 let mut rect = Rect {
                     min: paint_transform.to_pos2(obstacle.min),
                     max: paint_transform.to_pos2(obstacle.max),

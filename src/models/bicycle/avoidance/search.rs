@@ -105,6 +105,7 @@ pub(super) fn search<S: StateSampler>(
     env: &mut SearchEnv,
     nodes: &mut Vec<SearchNode>,
     grid_map: &mut GridMap,
+    collision_callback: &impl Fn(AgentState) -> bool,
 ) -> Option<Vec<usize>> {
     'skip: for _i in 0..env.expand_states {
         let mut sampler = S::new(env);
@@ -126,17 +127,17 @@ pub(super) fn search<S: StateSampler>(
          -> (bool, usize) {
             // const USE_SEPAX: bool = true;
             // const USE_STEER: bool = false;
-            let collision_checker = |_state: AgentState| {
-                // if Agent::collision_check(Some(this.id), state, this.class, env.entities, true) {
-                //     return false;
-                // }
-                // !env.game.check_hit(
-                //     &start_state
-                //         .collision_shape(this.class)
-                //         .with_position(state.as_point().into()),
-                // )
-                false
-            };
+            // let collision_checker = |state: AgentState| {
+            // if Agent::collision_check(Some(this.id), state, this.class, env.entities, true) {
+            //     return false;
+            // }
+            // !env.game.check_hit(
+            //     &start_state
+            //         .collision_shape(this.class)
+            //         .with_position(state.as_point().into()),
+            // )
+            //     collision_callback(state)
+            // };
             // if USE_SEPAX {
             //     let start_shape = start_state.collision_shape(this.class);
             //     let (hit, level) = env
@@ -179,7 +180,7 @@ pub(super) fn search<S: StateSampler>(
             //     )
             // } else {
             (
-                interpolate(start_state, next_state, DIST_RADIUS, &collision_checker),
+                interpolate(start_state, next_state, DIST_RADIUS, collision_callback),
                 0,
             )
             // }

@@ -121,6 +121,7 @@ pub(crate) struct BicycleNavigation {
     pub path: Vec<Vec2<f64>>,
     pub prev_path_node: f64,
     pub search_state: Option<SearchState>,
+    pub obstacles: Vec<Obstacle>,
     env: SearchEnv,
 }
 
@@ -145,7 +146,14 @@ impl BicycleNavigation {
             BicyclePath::PathSearch => {
                 let agent = AgentState::new(0., 0., 0.);
                 let goal = AgentState::new(40., 40., 0.);
-                avoidance_search(&mut self.search_state, &mut self.env, &agent, &goal, params);
+                avoidance_search(
+                    &mut self.search_state,
+                    &mut self.env,
+                    &agent,
+                    &goal,
+                    params,
+                    &|s| Self::collision_check(&self.obstacles, s),
+                );
                 self.prev_path_node = 0.;
                 return;
             }
@@ -169,6 +177,7 @@ impl BicycleNavigation {
                 &bicycle.into(),
                 &goal,
                 params,
+                &|s| Self::collision_check(&self.obstacles, s),
             );
 
             if found_path {
@@ -181,6 +190,18 @@ impl BicycleNavigation {
             }
         }
     }
+
+    fn collision_check(obstacles: &[Obstacle], state: AgentState) -> bool {
+        obstacles
+            .iter()
+            .find(|obs| {
+                obs.min.x < state.x
+                    && state.x < obs.max.x
+                    && obs.min.y < state.y
+                    && state.y < obs.max.y
+            })
+            .is_some()
+    }
 }
 
 impl Default for BicycleNavigation {
@@ -191,6 +212,16 @@ impl Default for BicycleNavigation {
             path: BicycleParams::gen_path(path_shape, &path_params, 250),
             prev_path_node: 0.,
             search_state: None,
+            obstacles: vec![
+                Obstacle {
+                    min: Vec2::new(10., 10.),
+                    max: Vec2::new(30., 30.),
+                },
+                Obstacle {
+                    min: Vec2::new(10., -30.),
+                    max: Vec2::new(30., -10.),
+                },
+            ],
             env: SearchEnv::new(WHEEL_BASE),
         }
     }
