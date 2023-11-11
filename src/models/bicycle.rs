@@ -13,7 +13,7 @@ use crate::{
 
 pub(crate) use self::{avoidance::AvoidanceMode, path_utils::interpolate_path};
 use self::{
-    avoidance::{avoidance_search, AgentState, SearchEnv, SearchState},
+    avoidance::{avoidance_search, AgentState, AvoidanceParams, SearchEnv, SearchState},
     path_utils::find_closest_node,
 };
 
@@ -146,15 +146,17 @@ impl BicycleNavigation {
             BicyclePath::PathSearch => {
                 let agent = AgentState::new(0., 0., 0.);
                 let goal = AgentState::new(40., 40., 0.);
-                avoidance_search(
-                    params.path_params.avoidance,
-                    &mut self.search_state,
-                    &mut self.env,
-                    &agent,
-                    &goal,
+                let mut a_params = AvoidanceParams {
+                    avoidance_mode: params.path_params.avoidance,
+                    search_state: &mut self.search_state,
+                    env: &mut self.env,
+                    goal: &goal,
+                    agent: &agent,
                     params,
-                    &|s| Self::collision_check(&self.obstacles, s),
-                );
+                };
+                avoidance_search(&mut a_params, &|s| {
+                    Self::collision_check(&self.obstacles, s)
+                });
                 self.prev_path_node = 0.;
                 return;
             }
@@ -172,15 +174,17 @@ impl BicycleNavigation {
     pub(crate) fn update_path(&mut self, bicycle: &Bicycle, params: &BicycleParams) {
         if matches!(params.path_shape, BicyclePath::PathSearch) {
             let goal = AgentState::new(40., 40., 0.);
-            let found_path = avoidance_search(
-                params.path_params.avoidance,
-                &mut self.search_state,
-                &mut self.env,
-                &bicycle.into(),
-                &goal,
+            let mut a_params = AvoidanceParams {
+                avoidance_mode: params.path_params.avoidance,
+                search_state: &mut self.search_state,
+                env: &mut self.env,
+                goal: &goal,
+                agent: &bicycle.into(),
                 params,
-                &|s| Self::collision_check(&self.obstacles, s),
-            );
+            };
+            let found_path = avoidance_search(&mut a_params, &|s| {
+                Self::collision_check(&self.obstacles, s)
+            });
 
             if found_path {
                 if let Some(sstate) = &self.search_state {

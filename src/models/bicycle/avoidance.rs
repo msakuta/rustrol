@@ -260,58 +260,37 @@ impl SearchState {
     }
 }
 
+pub(super) struct AvoidanceParams<'a> {
+    pub avoidance_mode: AvoidanceMode,
+    pub search_state: &'a mut Option<SearchState>,
+    pub env: &'a mut SearchEnv,
+    pub agent: &'a AgentState,
+    pub goal: &'a AgentState,
+    pub params: &'a BicycleParams,
+}
+
 /// RRT* search
 ///
 /// Returns true if the path is found
 pub(super) fn avoidance_search(
-    avoidance_mode: AvoidanceMode,
-    search_state: &mut Option<SearchState>,
-    env: &mut SearchEnv,
-    agent: &AgentState,
-    goal: &AgentState,
-    params: &BicycleParams,
+    params: &mut AvoidanceParams,
     collision_callback: &impl Fn(AgentState) -> bool,
 ) -> bool {
-    match avoidance_mode {
-        AvoidanceMode::Kinematic => avoidance_search_gen::<ForwardKinematicSampler>(
-            search_state,
-            agent,
-            &goal,
-            env,
-            false,
-            params,
-            collision_callback,
-        ),
-        AvoidanceMode::Rrt => avoidance_search_gen::<SpaceSampler>(
-            search_state,
-            agent,
-            &goal,
-            env,
-            false,
-            params,
-            collision_callback,
-        ),
-        AvoidanceMode::RrtStar => avoidance_search_gen::<RrtStarSampler>(
-            search_state,
-            agent,
-            &goal,
-            env,
-            false,
-            params,
-            collision_callback,
-        ),
+    match params.avoidance_mode {
+        AvoidanceMode::Kinematic => {
+            avoidance_search_gen::<ForwardKinematicSampler>(params, collision_callback)
+        }
+        AvoidanceMode::Rrt => avoidance_search_gen::<SpaceSampler>(params, collision_callback),
+        AvoidanceMode::RrtStar => {
+            avoidance_search_gen::<RrtStarSampler>(params, collision_callback)
+        }
     }
 }
 
 /// Templatized logic for searching avoidance path. The type argument speicfy how to
 /// sample a new node.
 pub(super) fn avoidance_search_gen<Sampler: StateSampler>(
-    search_state: &mut Option<SearchState>,
-    agent: &AgentState,
-    goal: &AgentState,
-    env: &mut SearchEnv,
-    backward: bool,
-    params: &BicycleParams,
+    params: &mut AvoidanceParams,
     collision_callback: &impl Fn(AgentState) -> bool,
 ) -> bool {
     // println!(
@@ -319,16 +298,19 @@ pub(super) fn avoidance_search_gen<Sampler: StateSampler>(
     //     self.search_state.is_some(),
     //     self.goal
     // );
+    let agent = *params.agent;
+    let goal = *params.goal;
+    let env = &mut params.env;
 
     // Restart search if the target has diverged
-    if let Some(ss) = search_state {
-        if !compare_state(&ss.goal, goal) {
-            *search_state = None;
+    if let Some(ss) = params.search_state {
+        if !compare_state(&ss.goal, &goal) {
+            *params.search_state = None;
         }
     }
 
     let mut searched_path = false;
-    if let Some(mut sstate) = search_state.take() {
+    if let Some(mut sstate) = params.search_state.take() {
         if let Some(goal) = sstate.last_solution {
             if let Some(path) = can_connect_goal(&sstate.start_set, &sstate.search_tree, goal) {
                 // Restore previous solution
@@ -354,7 +336,7 @@ pub(super) fn avoidance_search_gen<Sampler: StateSampler>(
                 // among all nodes in the tree, so we randomly pick one from a linear list of all nodes.
                 let path = search::<Sampler>(
                     &sstate.start_set,
-                    goal,
+                    &goal,
                     env,
                     nodes,
                     &mut sstate.grid_map,
@@ -367,21 +349,21 @@ pub(super) fn avoidance_search_gen<Sampler: StateSampler>(
                     // println!("Materialized found path: {:?}", self.path);
                     sstate.last_solution = path.last().copied();
                     sstate.found_path = Some(path);
-                    *search_state = Some(sstate);
+                    *params.search_state = Some(sstate);
                     return true;
                 }
             }
 
             // let treeSize = env.tree_size;
-            sstate.goal = *goal;
-            *search_state = Some(sstate);
+            sstate.goal = goal;
+            *params.search_state = Some(sstate);
             searched_path = true;
         }
     }
 
     if !searched_path {
         // println!("Rebuilding tree with {} nodes should be 0", nodes.len());
-        let mut nodes: Vec<SearchNode> = Sampler::initial_search(agent, params, backward);
+        let mut nodes: Vec<SearchNode> = Sampler::initial_search(&agent, params.params);
 
         if !nodes.is_empty() {
             let root_set = (0..nodes.len()).collect();
@@ -396,17 +378,17 @@ pub(super) fn avoidance_search_gen<Sampler: StateSampler>(
             );
             let found_path = search::<Sampler>(
                 &root_set,
-                goal,
+                &goal,
                 env,
                 &mut nodes,
                 &mut grid_map,
                 collision_callback,
             );
 
-            *search_state = Some(SearchState {
+            *params.search_state = Some(SearchState {
                 search_tree: nodes,
                 start_set: root_set,
-                goal: *goal,
+                goal,
                 last_solution: None,
                 found_path,
                 grid_map,
@@ -443,7 +425,8 @@ pub(super) fn avoidance_search_gen<Sampler: StateSampler>(
         // }
     }
 
-    search_state
+    params
+        .search_state
         .as_ref()
         .map(|ss| ss.found_path.is_some())
         .unwrap_or(false)
