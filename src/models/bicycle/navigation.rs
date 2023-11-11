@@ -68,7 +68,7 @@ impl BicycleNavigation {
             _ => {}
         }
 
-        self.path = BicycleParams::gen_path(
+        self.path = gen_path(
             params.path_shape,
             &params.path_params,
             params.max_iter + params.prediction_states,
@@ -123,7 +123,7 @@ impl Default for BicycleNavigation {
         let path_shape = BicyclePath::Crank;
         let path_params = PathParams::default();
         Self {
-            path: BicycleParams::gen_path(path_shape, &path_params, 250),
+            path: gen_path(path_shape, &path_params, 250),
             prev_path_node: 0.,
             search_state: None,
             obstacles: vec![
@@ -141,57 +141,55 @@ impl Default for BicycleNavigation {
     }
 }
 
-impl BicycleParams {
-    fn gen_path(path: BicyclePath, path_params: &PathParams, len: usize) -> Vec<Vec2<f64>> {
-        use std::f64::consts::PI;
-        if matches!(path, BicyclePath::DirectControl) {
-            return vec![];
-        }
-        (0..len)
-            .map(|t| match path {
-                BicyclePath::Circle => {
-                    let period = 2. * PI * path_params.circle_radius / path_params.target_speed;
-                    let phase = t as f64 * 2. * PI / period;
-                    Vec2::new(
-                        path_params.circle_radius * phase.sin(),
-                        path_params.circle_radius * (1. - phase.cos()),
-                    )
-                }
-                BicyclePath::Sine => {
-                    let phase = t as f64 / path_params.sine_period * PI * 2.;
-                    Vec2::new(
-                        t as f64 * path_params.target_speed,
-                        path_params.sine_amplitude * phase.sin(),
-                    )
-                }
-                BicyclePath::Crank => {
-                    let period = path_params.crank_period;
-                    let speed = path_params.target_speed;
-                    let ft = t as f64 % period;
-                    let period4 = period / 4.;
-                    let x_ofs = (t as f64).div_euclid(period) * period4 * 2. * speed;
-                    if ft < period4 {
-                        Vec2::new(x_ofs + ft * speed, 0.)
-                    } else if ft < period4 * 2. {
-                        Vec2::new(x_ofs + period4 * speed, (ft - period4) * speed)
-                    } else if ft < period4 * 3. {
-                        Vec2::new(
-                            x_ofs + period4 * speed + (ft - period4 * 2.) * speed,
-                            period4 * speed,
-                        )
-                    } else {
-                        Vec2::new(
-                            x_ofs + period4 * speed * 2.,
-                            period4 * speed - (ft - period4 * 3.) * speed,
-                        )
-                    }
-                }
-                _ => {
-                    unreachable!()
-                }
-            })
-            .collect()
+fn gen_path(path: BicyclePath, path_params: &PathParams, len: usize) -> Vec<Vec2<f64>> {
+    use std::f64::consts::PI;
+    if matches!(path, BicyclePath::DirectControl) {
+        return vec![];
     }
+    (0..len)
+        .map(|t| match path {
+            BicyclePath::Circle => {
+                let period = 2. * PI * path_params.circle_radius / path_params.target_speed;
+                let phase = t as f64 * 2. * PI / period;
+                Vec2::new(
+                    path_params.circle_radius * phase.sin(),
+                    path_params.circle_radius * (1. - phase.cos()),
+                )
+            }
+            BicyclePath::Sine => {
+                let phase = t as f64 / path_params.sine_period * PI * 2.;
+                Vec2::new(
+                    t as f64 * path_params.target_speed,
+                    path_params.sine_amplitude * phase.sin(),
+                )
+            }
+            BicyclePath::Crank => {
+                let period = path_params.crank_period;
+                let speed = path_params.target_speed;
+                let ft = t as f64 % period;
+                let period4 = period / 4.;
+                let x_ofs = (t as f64).div_euclid(period) * period4 * 2. * speed;
+                if ft < period4 {
+                    Vec2::new(x_ofs + ft * speed, 0.)
+                } else if ft < period4 * 2. {
+                    Vec2::new(x_ofs + period4 * speed, (ft - period4) * speed)
+                } else if ft < period4 * 3. {
+                    Vec2::new(
+                        x_ofs + period4 * speed + (ft - period4 * 2.) * speed,
+                        period4 * speed,
+                    )
+                } else {
+                    Vec2::new(
+                        x_ofs + period4 * speed * 2.,
+                        period4 * speed - (ft - period4 * 3.) * speed,
+                    )
+                }
+            }
+            _ => {
+                unreachable!()
+            }
+        })
+        .collect()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
