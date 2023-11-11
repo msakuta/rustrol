@@ -35,8 +35,9 @@ pub struct BicycleApp {
 impl BicycleApp {
     pub fn new() -> Self {
         let params = BicycleParams::default();
+        let nav = BicycleNavigation::default();
         let (bicycle_result, error_msg) =
-            match simulate_bicycle(Vec2 { x: 0., y: 0. }, &params, &[], &[]) {
+            match simulate_bicycle(Vec2 { x: 0., y: 0. }, &params, &nav.path, &[]) {
                 Ok(res) => (res, None),
                 Err(e) => {
                     eprintln!("bicycle_model error: {e:?}");
@@ -55,7 +56,7 @@ impl BicycleApp {
             h_thrust: 0.,
             v_thrust: 0.,
             params,
-            nav: BicycleNavigation::default(),
+            nav,
             error_msg,
         }
     }
