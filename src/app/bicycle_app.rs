@@ -206,6 +206,11 @@ impl BicycleApp {
                         &mut self.params.path_params.expand_states,
                         1..=500,
                     ));
+                    ui.label("Search size:");
+                    ui.add(egui::widgets::Slider::new(
+                        &mut self.params.path_params.search_size,
+                        1f64..=500.,
+                    ));
                 }
                 BicyclePath::Circle => {
                     ui.label("Circle Radius:");

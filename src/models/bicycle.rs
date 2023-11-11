@@ -13,7 +13,9 @@ use crate::{
 
 pub(crate) use self::{avoidance::AvoidanceMode, path_utils::interpolate_path};
 use self::{
-    avoidance::{avoidance_search, AgentState, AvoidanceParams, SearchEnv, SearchState},
+    avoidance::{
+        avoidance_search, AgentState, AvoidanceParams, SearchEnv, SearchState, SEARCH_WIDTH,
+    },
     path_utils::find_closest_node,
 };
 
@@ -144,6 +146,8 @@ impl BicycleNavigation {
                 return;
             }
             BicyclePath::PathSearch => {
+                let search_size = params.path_params.search_size;
+                self.env.search_bounds = [-search_size, -search_size, search_size, search_size];
                 let agent = AgentState::new(0., 0., 0.);
                 let goal = AgentState::new(40., 40., 0.);
                 let mut a_params = AvoidanceParams {
@@ -247,6 +251,7 @@ pub struct PathParams {
     pub path_waypoints: Vec<Vec2<f64>>,
     pub avoidance: AvoidanceMode,
     pub expand_states: usize,
+    pub search_size: f64,
 }
 
 impl Default for PathParams {
@@ -260,6 +265,7 @@ impl Default for PathParams {
             path_waypoints: vec![],
             avoidance: AvoidanceMode::Kinematic,
             expand_states: 10,
+            search_size: SEARCH_WIDTH,
         }
     }
 }
