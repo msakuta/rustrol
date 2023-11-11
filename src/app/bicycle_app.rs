@@ -177,28 +177,35 @@ impl BicycleApp {
             ));
             match self.params.path_shape {
                 BicyclePath::PathSearch => {
-                    ui.label("Search:");
-                    reset_path |= ui
-                        .radio_value(
-                            &mut self.params.path_params.avoidance,
-                            AvoidanceMode::Kinematic,
-                            "Kinematic",
-                        )
-                        .changed();
-                    reset_path |= ui
-                        .radio_value(
-                            &mut self.params.path_params.avoidance,
-                            AvoidanceMode::Rrt,
-                            "RRT",
-                        )
-                        .changed();
-                    reset_path |= ui
-                        .radio_value(
-                            &mut self.params.path_params.avoidance,
-                            AvoidanceMode::RrtStar,
-                            "RRTStar",
-                        )
-                        .changed();
+                    ui.group(|ui| {
+                        ui.label("Search:");
+                        reset_path |= ui
+                            .radio_value(
+                                &mut self.params.path_params.avoidance,
+                                AvoidanceMode::Kinematic,
+                                "Kinematic",
+                            )
+                            .changed();
+                        reset_path |= ui
+                            .radio_value(
+                                &mut self.params.path_params.avoidance,
+                                AvoidanceMode::Rrt,
+                                "RRT",
+                            )
+                            .changed();
+                        reset_path |= ui
+                            .radio_value(
+                                &mut self.params.path_params.avoidance,
+                                AvoidanceMode::RrtStar,
+                                "RRTStar",
+                            )
+                            .changed();
+                    });
+                    ui.label("Expand states:");
+                    ui.add(egui::widgets::Slider::new(
+                        &mut self.params.path_params.expand_states,
+                        1..=500,
+                    ));
                 }
                 BicyclePath::Circle => {
                     ui.label("Circle Radius:");

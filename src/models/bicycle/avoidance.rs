@@ -12,7 +12,7 @@ use self::{
     sampler::{ForwardKinematicSampler, RrtStarSampler, SpaceSampler, StateSampler},
     search::{can_connect_goal, insert_to_grid_map, search, to_cell},
 };
-use super::{Bicycle, BicycleParams, STEERING_SPEED, WHEEL_BASE};
+use super::{Bicycle, PathParams, STEERING_SPEED, WHEEL_BASE};
 use crate::{
     interpolation::{lerp, AsPoint, LerpPoint},
     vec2::Vec2, // collision::{CollisionShape, Obb},
@@ -266,7 +266,7 @@ pub(super) struct AvoidanceParams<'a> {
     pub env: &'a mut SearchEnv,
     pub agent: &'a AgentState,
     pub goal: &'a AgentState,
-    pub params: &'a BicycleParams,
+    pub path_params: &'a PathParams,
 }
 
 /// RRT* search
@@ -341,6 +341,7 @@ pub(super) fn avoidance_search_gen<Sampler: StateSampler>(
                     nodes,
                     &mut sstate.grid_map,
                     collision_callback,
+                    params.path_params.expand_states,
                 );
 
                 env.tree_size += 1;
@@ -363,7 +364,7 @@ pub(super) fn avoidance_search_gen<Sampler: StateSampler>(
 
     if !searched_path {
         // println!("Rebuilding tree with {} nodes should be 0", nodes.len());
-        let mut nodes: Vec<SearchNode> = Sampler::initial_search(&agent, params.params);
+        let mut nodes: Vec<SearchNode> = Sampler::initial_search(&agent, params.path_params);
 
         if !nodes.is_empty() {
             let root_set = (0..nodes.len()).collect();
@@ -383,6 +384,7 @@ pub(super) fn avoidance_search_gen<Sampler: StateSampler>(
                 &mut nodes,
                 &mut grid_map,
                 collision_callback,
+                params.path_params.expand_states,
             );
 
             *params.search_state = Some(SearchState {
@@ -433,7 +435,6 @@ pub(super) fn avoidance_search_gen<Sampler: StateSampler>(
 }
 
 pub(super) struct SearchEnv {
-    expand_states: usize,
     rng: Xor128,
     skipped_nodes: usize,
     wheel_base: f64,
@@ -444,7 +445,6 @@ pub(super) struct SearchEnv {
 impl SearchEnv {
     pub(super) fn new(wheel_base: f64) -> Self {
         Self {
-            expand_states: 10,
             rng: Xor128::new(233221),
             skipped_nodes: 0,
             wheel_base,

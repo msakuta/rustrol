@@ -126,11 +126,12 @@ pub(super) fn search<S: StateSampler>(
     nodes: &mut Vec<SearchNode>,
     grid_map: &mut GridMap,
     collision_callback: &impl Fn(AgentState) -> bool,
+    expand_states: usize,
 ) -> Option<Vec<usize>> {
     let mut sample_time = 0.;
     let mut merge_time = 0.;
     let mut rewire_time = 0.;
-    'skip: for _i in 0..env.expand_states {
+    'skip: for _i in 0..expand_states {
         let mut sampler = S::new(env);
 
         // println!(

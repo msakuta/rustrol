@@ -9,7 +9,7 @@ use cgmath::{InnerSpace, MetricSpace, Vector2};
 // use rand::{distributions::Uniform, prelude::Distribution};
 
 use super::{
-    super::{BicycleParams, MAX_THRUST},
+    super::{PathParams, MAX_THRUST},
     compare_distance,
     search::{for_each_neighbor, to_cell},
     wrap_angle, AgentState, GridMap, SearchEnv, SearchNode, CELL_SIZE, DIST_RADIUS, DIST_THRESHOLD,
@@ -19,7 +19,7 @@ use super::{
 pub(in super::super) trait StateSampler {
     fn new(env: &SearchEnv) -> Self;
     fn compare_state(s1: &AgentState, s2: &AgentState) -> bool;
-    fn initial_search(agent: &AgentState, params: &BicycleParams) -> Vec<SearchNode>;
+    fn initial_search(agent: &AgentState, params: &PathParams) -> Vec<SearchNode>;
 
     /// Sample a new state. Shall return an index to the starting node and the new state as a tuple.
     fn sample(
@@ -90,9 +90,9 @@ impl StateSampler for ForwardKinematicSampler {
             && delta_angle.abs() < std::f64::consts::PI / 6.
     }
 
-    fn initial_search(agent: &AgentState, params: &BicycleParams) -> Vec<SearchNode> {
+    fn initial_search(agent: &AgentState, params: &PathParams) -> Vec<SearchNode> {
         let backward = false;
-        let speed = params.path_params.target_speed;
+        let speed = params.target_speed;
         let mut nodes = vec![];
         if backward || -0.1 < speed {
             let root = SearchNode::new(*agent, 0., 1.);
@@ -280,7 +280,7 @@ impl StateSampler for SpaceSampler {
         compare_distance(s1, s2, DIST_THRESHOLD)
     }
 
-    fn initial_search(agent: &AgentState, _params: &BicycleParams) -> Vec<SearchNode> {
+    fn initial_search(agent: &AgentState, _params: &PathParams) -> Vec<SearchNode> {
         let root = SearchNode::new(*agent, 0., 1.);
         vec![root]
     }
@@ -377,7 +377,7 @@ impl StateSampler for RrtStarSampler {
         compare_distance(s1, s2, DIST_THRESHOLD)
     }
 
-    fn initial_search(agent: &AgentState, _params: &BicycleParams) -> Vec<SearchNode> {
+    fn initial_search(agent: &AgentState, _params: &PathParams) -> Vec<SearchNode> {
         let root = SearchNode::new(*agent, 0., 1.);
         vec![root]
     }

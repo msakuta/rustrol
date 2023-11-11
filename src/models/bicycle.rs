@@ -152,7 +152,7 @@ impl BicycleNavigation {
                     env: &mut self.env,
                     goal: &goal,
                     agent: &agent,
-                    params,
+                    path_params: &params.path_params,
                 };
                 avoidance_search(&mut a_params, &|s| {
                     Self::collision_check(&self.obstacles, s)
@@ -180,7 +180,7 @@ impl BicycleNavigation {
                 env: &mut self.env,
                 goal: &goal,
                 agent: &bicycle.into(),
-                params,
+                path_params: &params.path_params,
             };
             let found_path = avoidance_search(&mut a_params, &|s| {
                 Self::collision_check(&self.obstacles, s)
@@ -246,6 +246,7 @@ pub struct PathParams {
     pub crank_period: f64,
     pub path_waypoints: Vec<Vec2<f64>>,
     pub avoidance: AvoidanceMode,
+    pub expand_states: usize,
 }
 
 impl Default for PathParams {
@@ -258,6 +259,7 @@ impl Default for PathParams {
             crank_period: CRANK_PERIOD,
             path_waypoints: vec![],
             avoidance: AvoidanceMode::Kinematic,
+            expand_states: 10,
         }
     }
 }
