@@ -6,8 +6,9 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-cgmath = "0.18.0"
+cgmath = { version = "0.18.0", features = ["mint"] }
 eframe = "0.21.1"
+mint = "0.5.9"
 rustograd = { git = "https://github.com/msakuta/rustograd", branch = "master" }
 # rustograd = { path = "../rustograd" }
 

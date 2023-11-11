@@ -7,8 +7,8 @@ use eframe::{
 use crate::{
     models::bicycle::{
         bicycle_simulate_step, control_bicycle, interpolate_path, simulate_bicycle, AvoidanceMode,
-        Bicycle, BicycleNavigation, BicycleParams, BicyclePath, BicycleResult, MAX_STEERING,
-        MAX_THRUST,
+        Bicycle, BicycleNavigation, BicycleParams, BicyclePath, BicycleResult, BICYCLE_BACK,
+        BICYCLE_FRONT, BICYCLE_HALFWIDTH, MAX_STEERING, MAX_THRUST,
     },
     transform::{half_rect, Transform},
     vec2::Vec2,
@@ -427,10 +427,10 @@ impl BicycleApp {
                 };
 
                 painter.add(convert_to_poly(&[
-                    [-2., -2.],
-                    [6., -2.],
-                    [6., 2.],
-                    [-2., 2.],
+                    [BICYCLE_BACK as f32, -BICYCLE_HALFWIDTH as f32],
+                    [BICYCLE_FRONT as f32, -BICYCLE_HALFWIDTH as f32],
+                    [BICYCLE_FRONT as f32, BICYCLE_HALFWIDTH as f32],
+                    [BICYCLE_BACK as f32, BICYCLE_HALFWIDTH as f32],
                 ]));
                 painter.add(convert_to_poly(&[[7., -1.], [8., 0.], [7., 1.]]));
 

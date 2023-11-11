@@ -304,10 +304,11 @@ impl StateSampler for SpaceSampler {
         self.0 = closest_node.cost;
         let closest_point = Vector2::from(closest_node.state);
         let distance = closest_point.distance(position).min(STEER_DISTANCE);
-        let steer = (position - closest_point).normalize() * distance;
-        let position = closest_point + steer;
+        let delta = (position - closest_point).normalize() * distance;
+        let heading = delta.y.atan2(delta.x);
+        let position = closest_point + delta;
 
-        let state = AgentState::new(position.x, position.y, closest_node.state.heading);
+        let state = AgentState::new(position.x, position.y, heading);
         let direction = closest_node.speed.signum();
 
         Some((
@@ -400,14 +401,15 @@ impl StateSampler for RrtStarSampler {
 
         let closest_point = Vector2::from(nodes[closest_id].state);
         let distance = closest_point.distance(position).min(STEER_DISTANCE);
-        let position = if distance < STEER_DISTANCE {
-            position
+        let (delta, position) = if distance < STEER_DISTANCE {
+            (position - closest_point, position)
         } else {
-            let steer = (position - closest_point).normalize() * distance;
-            closest_point + steer
+            let delta = (position - closest_point).normalize() * distance;
+            (delta, closest_point + delta)
         };
+        let heading = delta.y.atan2(delta.x);
 
-        let mut state = AgentState::new(position.x, position.y, closest_node.state.heading);
+        let mut state = AgentState::new(position.x, position.y, heading);
         let direction = closest_node.speed.signum();
 
         let next_direction = direction;

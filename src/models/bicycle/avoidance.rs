@@ -12,11 +12,14 @@ use self::{
     sampler::{ForwardKinematicSampler, RrtStarSampler, SpaceSampler, StateSampler},
     search::{can_connect_goal, insert_to_grid_map, search, to_cell},
 };
-use super::{Bicycle, PathParams, STEERING_SPEED, WHEEL_BASE};
+use super::{
+    collision::{CollisionShape, Obb},
+    Bicycle, PathParams, BICYCLE_BACK, BICYCLE_FRONT, BICYCLE_HALFWIDTH, STEERING_SPEED,
+    WHEEL_BASE,
+};
 use crate::{
     interpolation::{lerp, AsPoint, LerpPoint},
-    vec2::Vec2, // collision::{CollisionShape, Obb},
-    // entity::Entity,
+    vec2::{apply_matrix2, rotation_matrix, Vec2},
     xor128::Xor128,
 };
 
@@ -47,15 +50,18 @@ impl AgentState {
         }
     }
 
-    // pub fn collision_shape(&self, class: AgentClass) -> CollisionShape {
-    //     let shape = class.shape();
-    //     CollisionShape::BBox(Obb {
-    //         center: Vector2::new(self.x, self.y),
-    //         xs: shape.0,
-    //         ys: shape.1,
-    //         orient: self.heading,
-    //     })
-    // }
+    pub fn collision_shape(&self) -> CollisionShape {
+        let rotation = rotation_matrix(self.heading);
+        let forward: Vector2<f64> = apply_matrix2(&rotation, [1., 0.]).into();
+        let base: Vector2<_> = (*self).into();
+        let center = base + forward * WHEEL_BASE * 0.5;
+        CollisionShape::BBox(Obb {
+            center,
+            xs: (BICYCLE_FRONT - BICYCLE_BACK) * 0.5,
+            ys: BICYCLE_HALFWIDTH,
+            orient: self.heading,
+        })
+    }
 
     // pub(crate) fn with_orient(&self, orient: f64) -> Self {
     //     let mut copy = *self;

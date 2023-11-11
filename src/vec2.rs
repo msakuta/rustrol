@@ -173,3 +173,27 @@ impl<T: Neg<Output = T>> Neg for Vec2<T> {
         }
     }
 }
+
+impl<T> From<Vec2<T>> for mint::Vector2<T> {
+    fn from(value: Vec2<T>) -> Self {
+        Self {
+            x: value.x,
+            y: value.y,
+        }
+    }
+}
+
+impl<T> mint::IntoMint for Vec2<T> {
+    type MintType = mint::Vector2<T>;
+}
+
+pub(crate) fn rotation_matrix(angle: f64) -> [f64; 4] {
+    [angle.cos(), -angle.sin(), angle.sin(), angle.cos()]
+}
+
+pub(crate) fn apply_matrix2(mat: &[f64; 4], ofs: [f64; 2]) -> [f64; 2] {
+    [
+        mat[0] * ofs[0] + mat[1] * ofs[1],
+        mat[2] * ofs[0] + mat[3] * ofs[1],
+    ]
+}

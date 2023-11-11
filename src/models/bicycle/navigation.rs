@@ -113,13 +113,16 @@ impl BicycleNavigation {
     }
 
     fn collision_check(obstacles: &[Obstacle], state: AgentState) -> bool {
+        let agent_shape = state.collision_shape();
         obstacles
             .iter()
             .find(|obs| {
-                obs.min.x < state.x
-                    && state.x < obs.max.x
-                    && obs.min.y < state.y
-                    && state.y < obs.max.y
+                let obs_shape = obs.collision_shape();
+                agent_shape.intersects(&obs_shape)
+                // obs.min.x < state.x
+                //     && state.x < obs.max.x
+                //     && obs.min.y < state.y
+                //     && state.y < obs.max.y
             })
             .is_some()
     }

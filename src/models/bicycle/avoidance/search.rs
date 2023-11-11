@@ -163,31 +163,9 @@ pub(super) fn search<S: StateSampler>(
             //     collision_callback(state)
             // };
             // if USE_SEPAX {
-            //     let start_shape = start_state.collision_shape(this.class);
-            //     let (hit, level) = env
-            //         .entities
-            //         .iter()
-            //         .filter_map(|entity| entity.try_borrow().ok())
-            //         .fold((false, 0usize), |acc, entity| {
-            //             let shape = entity.get_shape();
-            //             let pos = Vector2::from(start_state);
-            //             let diff = Vector2::from(next_state) - pos;
-            //             let (hit, level) =
-            //                 bsearch_collision(&start_shape, &diff, &shape, &Vector2::zero());
-            //             (acc.0 || hit, acc.1.max(level))
-            //         });
-
-            //     if hit {
-            //         (hit, level)
-            //     } else {
+            //     let start_shape = start_state.collision_shape();
             //         (
-            //             interpolate(start_state, next_state, DIST_RADIUS * 0.5, |pos| {
-            //                 !env.game.check_hit(
-            //                     &start_state
-            //                         .collision_shape(this.class)
-            //                         .with_position(pos.into()),
-            //                 )
-            //             }),
+            //             interpolate(start_state, next_state, DIST_RADIUS * 0.5, collision_callback),
             //             level,
             //         )
             //     }

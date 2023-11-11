@@ -509,6 +509,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1a98d30140e3296250832bbaaff83b27dcd6fa3cc70fb6f1f3e5c9c0023b5317"
 dependencies = [
  "approx",
+ "mint",
  "num-traits",
 ]
 
@@ -1304,6 +1305,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "mint"
+version = "0.5.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e53debba6bda7a793e5f99b8dacf19e626084f525f7829104ba9898f367d85ff"
+
+[[package]]
 name = "mio"
 version = "0.8.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1772,6 +1779,7 @@ dependencies = [
  "cgmath",
  "console_error_panic_hook",
  "eframe",
+ "mint",
  "rustograd",
  "tracing-wasm",
  "wasm-bindgen-futures",

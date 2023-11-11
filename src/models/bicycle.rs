@@ -1,4 +1,5 @@
 mod avoidance;
+mod collision;
 mod navigation;
 mod path_utils;
 
@@ -12,7 +13,11 @@ use crate::{
     vec2::Vec2,
 };
 
-use self::path_utils::find_closest_node;
+use self::{
+    avoidance::AgentState,
+    collision::{CollisionShape, Obb},
+    path_utils::find_closest_node,
+};
 pub(crate) use self::{
     avoidance::AvoidanceMode,
     navigation::{BicycleNavigation, BicyclePath, PathParams},
@@ -22,6 +27,9 @@ pub(crate) use self::{
 pub(crate) const MAX_THRUST: f64 = 0.5;
 pub(crate) const MAX_STEERING: f64 = std::f64::consts::PI / 4.;
 pub(crate) const STEERING_SPEED: f64 = std::f64::consts::PI * 0.01;
+pub(crate) const BICYCLE_FRONT: f64 = 6.;
+pub(crate) const BICYCLE_BACK: f64 = -2.;
+pub(crate) const BICYCLE_HALFWIDTH: f64 = 2.;
 const WHEEL_BASE: f64 = 4.;
 const RATE: f64 = 1e-4;
 
@@ -54,6 +62,17 @@ impl Default for BicycleParams {
 pub struct Obstacle {
     pub min: Vec2<f64>,
     pub max: Vec2<f64>,
+}
+
+impl Obstacle {
+    fn collision_shape(&self) -> CollisionShape {
+        CollisionShape::BBox(Obb {
+            center: mint::Vector2::from((self.min + self.max) * 0.5).into(),
+            xs: (self.max.x - self.min.x) * 0.5,
+            ys: (self.max.y - self.min.y) * 0.5,
+            orient: 0.,
+        })
+    }
 }
 
 pub(crate) struct Bicycle {
@@ -110,15 +129,17 @@ pub(crate) fn bicycle_simulate_step(
     };
     let direction = Vec2::new(bicycle.heading.cos(), bicycle.heading.sin());
     let newpos = bicycle.pos + direction * v_thrust * playback_speed;
+    let shape = AgentState::new(newpos.x, newpos.y, bicycle.heading).collision_shape();
     let hit_obs = obstacles.iter().find(|obs| {
-        obs.min.x < newpos.x && newpos.x < obs.max.x && obs.min.y < newpos.y && newpos.y < obs.max.y
+        let obs_shape = obs.collision_shape();
+        shape.intersects(&obs_shape)
+        // obs.min.x < newpos.x && newpos.x < obs.max.x && obs.min.y < newpos.y && newpos.y < obs.max.y
     });
     if hit_obs.is_none() {
         bicycle.pos = newpos;
+        let theta_dot = v_thrust * bicycle.steering.tan() / bicycle.wheel_base;
+        bicycle.heading += theta_dot * playback_speed;
     }
-
-    let theta_dot = v_thrust * bicycle.steering.tan() / bicycle.wheel_base;
-    bicycle.heading += theta_dot * playback_speed;
 }
 
 pub struct BicycleResultState {
@@ -285,17 +306,24 @@ fn simulate_step(
     let direction = Vec2::new(heading.cos(), heading.sin());
     let oldpos = bicycle.pos.map(|x| x.data().unwrap());
     let newpos = oldpos + direction * v_thrust * delta_time;
+    let shape = AgentState::new(newpos.x, newpos.y, next_heading).collision_shape();
     let hit_obs = obstacles.iter().find(|obs| {
-        obs.min.x < newpos.x && newpos.x < obs.max.x && obs.min.y < newpos.y && newpos.y < obs.max.y
+        let obs_shape = obs.collision_shape();
+        shape.intersects(&obs_shape)
+        // obs.min.x < newpos.x && newpos.x < obs.max.x && obs.min.y < newpos.y && newpos.y < obs.max.y
     });
+    let ret_heading;
     if hit_obs.is_none() {
         bicycle.pos.x.set(newpos.x).unwrap();
         bicycle.pos.y.set(newpos.y).unwrap();
+        bicycle.heading.set(next_heading).unwrap();
+        ret_heading = next_heading;
+    } else {
+        ret_heading = heading;
     }
-    bicycle.heading.set(next_heading).unwrap();
     bicycle.steering.set(steering).unwrap();
 
-    (oldpos, next_heading)
+    (oldpos, ret_heading)
 }
 
 #[derive(Clone, Copy)]
