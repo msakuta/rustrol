@@ -188,8 +188,15 @@ impl BicycleApp {
                     reset_path |= ui
                         .radio_value(
                             &mut self.params.path_params.avoidance,
-                            AvoidanceMode::Space,
-                            "Space",
+                            AvoidanceMode::Rrt,
+                            "RRT",
+                        )
+                        .changed();
+                    reset_path |= ui
+                        .radio_value(
+                            &mut self.params.path_params.avoidance,
+                            AvoidanceMode::RrtStar,
+                            "RRTStar",
                         )
                         .changed();
                 }

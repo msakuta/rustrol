@@ -9,7 +9,7 @@ use cgmath::Vector2;
 
 // pub(crate) use self::render::AvoidanceRenderParams;
 use self::{
-    sampler::{ForwardKinematicSampler, SpaceSampler, StateSampler},
+    sampler::{ForwardKinematicSampler, RrtStarSampler, SpaceSampler, StateSampler},
     search::{can_connect_goal, insert_to_grid_map, search, to_cell},
 };
 use super::{Bicycle, BicycleParams, STEERING_SPEED, WHEEL_BASE};
@@ -25,9 +25,8 @@ const SEARCH_WIDTH: f64 = 50.;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AvoidanceMode {
     Kinematic,
-    Space,
-    // Rrt,
-    // RrtStar,
+    Rrt,
+    RrtStar,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -283,7 +282,7 @@ pub(super) fn avoidance_search(
             params,
             collision_callback,
         ),
-        AvoidanceMode::Space => avoidance_search_gen::<SpaceSampler>(
+        AvoidanceMode::Rrt => avoidance_search_gen::<SpaceSampler>(
             search_state,
             agent,
             &goal,
@@ -291,10 +290,16 @@ pub(super) fn avoidance_search(
             false,
             params,
             collision_callback,
-        ), // AvoidanceMode::Rrt => self.avoidance_search_gen::<SpaceSampler>(&mut env, backward),
-           // AvoidanceMode::RrtStar => {
-           //     self.avoidance_search_gen::<RrtStarSampler>(&mut env, backward)
-           // }
+        ),
+        AvoidanceMode::RrtStar => avoidance_search_gen::<RrtStarSampler>(
+            search_state,
+            agent,
+            &goal,
+            env,
+            false,
+            params,
+            collision_callback,
+        ),
     }
 }
 

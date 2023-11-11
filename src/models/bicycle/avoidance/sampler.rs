@@ -1,5 +1,10 @@
 //! Random search tree's sampling methods
 
+use std::{
+    collections::HashSet,
+    sync::atomic::{AtomicUsize, Ordering},
+};
+
 use cgmath::{InnerSpace, MetricSpace, Vector2};
 // use rand::{distributions::Uniform, prelude::Distribution};
 
@@ -368,235 +373,259 @@ fn find_closest_node<'a, 'b>(
     None
 }
 
-// /// Rewiring distance has to be long enough to make RRT* effective
-// pub const REWIRE_DISTANCE: f64 = DIST_RADIUS * 5.;
+/// Rewiring distance has to be long enough to make RRT* effective
+pub const REWIRE_DISTANCE: f64 = DIST_RADIUS * 5.;
 
-// /// RRT* sampler, awkward capitalization in Rust convention
-// pub(super) struct RrtStarSampler;
+/// RRT* sampler, awkward capitalization in Rust convention
+pub(super) struct RrtStarSampler;
 
-// impl StateSampler for RrtStarSampler {
-//     fn new(_env: &SearchEnv) -> Self {
-//         Self
-//     }
+impl StateSampler for RrtStarSampler {
+    fn new(_env: &SearchEnv) -> Self {
+        Self
+    }
 
-//     fn compare_state(s1: &AgentState, s2: &AgentState) -> bool {
-//         compare_distance(s1, s2, DIST_THRESHOLD)
-//     }
+    fn compare_state(s1: &AgentState, s2: &AgentState) -> bool {
+        compare_distance(s1, s2, DIST_THRESHOLD)
+    }
 
-//     fn initial_search(agent: &Agent, _backward: bool) -> Vec<SearchNode> {
-//         let root = SearchNode::new(agent.to_state(), 0., 0., 1.);
-//         vec![root]
-//     }
+    fn initial_search(
+        agent: &AgentState,
+        _params: &BicycleParams,
+        _backward: bool,
+    ) -> Vec<SearchNode> {
+        let root = SearchNode::new(*agent, 0., 1.);
+        vec![root]
+    }
 
-//     fn sample(
-//         &mut self,
-//         nodes: &[SearchNode],
-//         env: &SearchEnv,
-//         grid_map: &GridMap,
-//         collision_check: impl FnMut(AgentState, AgentState, f64, f64, f64) -> (bool, usize),
-//     ) -> Option<(usize, SearchNode)> {
-//         let position = Vector2::new(
-//             rand::random::<f64>() * env.game.xs as f64,
-//             rand::random::<f64>() * env.game.ys as f64,
-//         );
+    fn sample(
+        &mut self,
+        nodes: &[SearchNode],
+        env: &mut SearchEnv,
+        grid_map: &GridMap,
+        collision_check: impl FnMut(AgentState, AgentState, f64, f64, f64) -> (bool, usize),
+    ) -> Option<(usize, SearchNode)> {
+        let position = Vector2::new(
+            env.rng.next() * (env.search_bounds[2] - env.search_bounds[0]) + env.search_bounds[0],
+            env.rng.next() * (env.search_bounds[3] - env.search_bounds[1]) + env.search_bounds[1],
+            // rand::random::<f64>() * env.game.xs as f64,
+            // rand::random::<f64>() * env.game.ys as f64,
+        );
 
-//         let (closest_id, closest_node) = find_closest_node(nodes, position, grid_map)?;
+        let (closest_id, closest_node) = find_closest_node(nodes, position, grid_map)?;
 
-//         let closest_point = Vector2::from(nodes[closest_id].state);
-//         let distance = closest_point.distance(position).min(STEER_DISTANCE);
-//         let position = if distance < STEER_DISTANCE {
-//             position
-//         } else {
-//             let steer = (position - closest_point).normalize() * distance;
-//             closest_point + steer
-//         };
+        let closest_point = Vector2::from(nodes[closest_id].state);
+        let distance = closest_point.distance(position).min(STEER_DISTANCE);
+        let position = if distance < STEER_DISTANCE {
+            position
+        } else {
+            let steer = (position - closest_point).normalize() * distance;
+            closest_point + steer
+        };
 
-//         let mut state = AgentState::new(position.x, position.y, closest_node.state.heading);
-//         let direction = closest_node.speed.signum();
+        let mut state = AgentState::new(position.x, position.y, closest_node.state.heading);
+        let direction = closest_node.speed.signum();
 
-//         let next_direction = direction;
-//         let start_state = closest_node.state;
-//         let lowest_cost = find_lowest_cost(
-//             nodes,
-//             state,
-//             collision_check,
-//             start_state,
-//             next_direction,
-//             grid_map,
-//         );
+        let next_direction = direction;
+        let start_state = closest_node.state;
+        let lowest_cost = find_lowest_cost(
+            nodes,
+            state,
+            collision_check,
+            start_state,
+            next_direction,
+            grid_map,
+        );
 
-//         // If this is a "shortcut", i.e. has a lower cost than existing node, "graft" the branch
-//         if let Some((i, lowest_cost, delta)) = lowest_cost {
-//             state.heading = heading_from_delta(&delta, next_direction);
-//             Some((i, SearchNode::new(state, lowest_cost, 0., direction)))
-//         } else {
-//             None
-//         }
-//     }
+        // If this is a "shortcut", i.e. has a lower cost than existing node, "graft" the branch
+        if let Some((i, lowest_cost, delta)) = lowest_cost {
+            state.heading = heading_from_delta(&delta, next_direction);
+            Some((i, SearchNode::new(state, lowest_cost, direction)))
+        } else {
+            None
+        }
+    }
 
-//     fn rewire(
-//         &self,
-//         nodes: &mut [SearchNode],
-//         new_node: usize,
-//         _start: usize,
-//         mut collision_check: impl FnMut(AgentState, AgentState, f64, f64, f64) -> (bool, usize),
-//     ) {
-//         static TOTAL_INVOKES: AtomicUsize = AtomicUsize::new(0);
-//         static REWIRE_COUNT: AtomicUsize = AtomicUsize::new(0);
-//         let new_node_state = nodes[new_node].state;
-//         let new_node_cost = nodes[new_node].cost;
-//         let next_direction = nodes[new_node].speed.signum();
+    fn rewire(
+        &self,
+        nodes: &mut [SearchNode],
+        new_node: usize,
+        _start: usize,
+        mut collision_check: impl FnMut(AgentState, AgentState, f64, f64, f64) -> (bool, usize),
+        grid_map: &GridMap,
+    ) {
+        static TOTAL_INVOKES: AtomicUsize = AtomicUsize::new(0);
+        static REWIRE_COUNT: AtomicUsize = AtomicUsize::new(0);
+        let new_node_state = nodes[new_node].state;
+        let new_node_cost = nodes[new_node].cost;
+        let next_direction = nodes[new_node].speed.signum();
 
-//         let invokes = TOTAL_INVOKES.fetch_add(1, Ordering::Relaxed);
+        let invokes = TOTAL_INVOKES.fetch_add(1, Ordering::Relaxed);
 
-//         fn cycle_check(nodes: &mut [SearchNode], start: usize) -> bool {
-//             let Some(mut node) = nodes[start].from else {
-//                 return false;
-//             };
-//             let mut cycle_check = HashSet::new();
-//             while let Some(next_node) = nodes[node].from {
-//                 if cycle_check.contains(&next_node) {
-//                     println!(
-//                         "Cycle detected in rewire! {:?}",
-//                         cycle_check.iter().fold("".to_string(), |acc, cur| {
-//                             let state = &nodes[*cur as usize].state;
-//                             acc + &format!("({}:{},{}),", cur, state.x, state.y)
-//                         })
-//                     );
-//                     for c in cycle_check {
-//                         let c: usize = c;
-//                         nodes[c].cycle = true;
-//                     }
-//                     return true;
-//                 }
-//                 cycle_check.insert(next_node);
-//                 node = next_node;
-//             }
-//             false
-//         }
+        fn cycle_check(nodes: &mut [SearchNode], start: usize) -> bool {
+            let Some(mut node) = nodes[start].from else {
+                return false;
+            };
+            let mut cycle_check = HashSet::new();
+            while let Some(next_node) = nodes[node].from {
+                if cycle_check.contains(&next_node) {
+                    println!(
+                        "Cycle detected in rewire! {:?}",
+                        cycle_check.iter().fold("".to_string(), |acc, cur| {
+                            let state = &nodes[*cur as usize].state;
+                            acc + &format!("({}:{},{}),", cur, state.x, state.y)
+                        })
+                    );
+                    for c in cycle_check {
+                        let c: usize = c;
+                        nodes[c].cycle = true;
+                    }
+                    return true;
+                }
+                cycle_check.insert(next_node);
+                node = next_node;
+            }
+            false
+        }
 
-//         for i in 0..nodes.len() {
-//             if i == new_node || !nodes[i].is_passable() {
-//                 continue;
-//             }
-//             let existing_node = &nodes[i];
-//             let delta = Vector2::from(new_node_state) - Vector2::from(existing_node.state);
-//             let dist2 = delta.magnitude2();
-//             if REWIRE_DISTANCE.powf(2.) < dist2 {
-//                 continue;
-//             }
-//             let distance = dist2.sqrt();
-//             let (hit, _level) = collision_check(
-//                 new_node_state,
-//                 existing_node.state,
-//                 next_direction,
-//                 distance,
-//                 0.,
-//             );
-//             if hit {
-//                 continue;
-//             }
-//             let new_cost = new_node_cost + distance;
-//             if new_cost < existing_node.cost {
-//                 detach_from(nodes, i);
-//                 let existing_node = &mut nodes[i];
-//                 let existing_cost = existing_node.cost;
-//                 existing_node.cost = new_cost;
-//                 existing_node.state.heading = heading_from_delta(&delta, next_direction);
-//                 existing_node.from = Some(new_node);
+        for_each_neighbor(grid_map, to_cell(new_node_state), |i| {
+            // for i in 0..nodes.len() {
+            if i == new_node || !nodes[i].is_passable() {
+                return false;
+            }
+            let existing_node = &nodes[i];
+            let delta = Vector2::from(new_node_state) - Vector2::from(existing_node.state);
+            let dist2 = delta.magnitude2();
+            if REWIRE_DISTANCE.powf(2.) < dist2 {
+                return false;
+            }
+            let distance = dist2.sqrt();
+            let (hit, _level) = collision_check(
+                new_node_state,
+                existing_node.state,
+                next_direction,
+                distance,
+                0.,
+            );
+            if hit {
+                return false;
+            }
+            let new_cost = new_node_cost + distance;
+            if new_cost < existing_node.cost {
+                detach_from(nodes, i);
+                let existing_node = &mut nodes[i];
+                let existing_cost = existing_node.cost;
+                existing_node.cost = new_cost;
+                existing_node.state.heading = heading_from_delta(&delta, next_direction);
+                existing_node.from = Some(new_node);
 
-//                 // Changing a cost of a middle node will cause cascading effect to the nodes.
-//                 // println!(
-//                 //     "Calling update_cost, FISHY_COUNT: {}",
-//                 //     FISHY_COUNT.load(Ordering::Relaxed)
-//                 // );
-//                 if cycle_check(nodes, i) {
-//                     return;
-//                 }
-//                 update_cost(nodes, i, 0);
+                // Changing a cost of a middle node will cause cascading effect to the nodes.
+                // println!(
+                //     "Calling update_cost, FISHY_COUNT: {}",
+                //     FISHY_COUNT.load(Ordering::Relaxed)
+                // );
+                if cycle_check(nodes, i) {
+                    return true;
+                }
+                update_cost(nodes, i, 0);
 
-//                 let rewire_count = REWIRE_COUNT.fetch_add(1, Ordering::Relaxed);
-//                 if rewire_count % 100 == 0 {
-//                     println!(
-//                         "rewired cost {existing_cost} -> {new_cost}: {rewire_count}/{invokes}"
-//                     );
-//                 }
-//             }
-//         }
-//     }
-// }
+                let rewire_count = REWIRE_COUNT.fetch_add(1, Ordering::Relaxed);
+                if rewire_count % 100 == 0 {
+                    println!(
+                        "rewired cost {existing_cost} -> {new_cost}: {rewire_count}/{invokes}"
+                    );
+                }
+            }
+            false
+        });
+    }
+}
 
-// fn find_lowest_cost(
-//     nodes: &[SearchNode],
-//     state: AgentState,
-//     mut collision_check: impl FnMut(AgentState, AgentState, f64, f64, f64) -> (bool, usize),
-//     start_state: AgentState,
-//     next_direction: f64,
-//     grid_map: &GridMap,
-// ) -> Option<(usize, f64, Vector2<f64>)> {
-//     let center = ((state.x / CELL_SIZE) as i32, (state.y / CELL_SIZE) as i32);
-//     const MAX_SEARCH_CELL_RADIUS: i32 = 10;
-//     // Gradually expand cells to scan
-//     for cell_radius in 0..MAX_SEARCH_CELL_RADIUS {
-//         let mut closest = None;
-//         for iy in -cell_radius..=cell_radius {
-//             for ix in -cell_radius..=cell_radius {
-//                 let Some(cell_nodes) = grid_map.get(&[center.0 + ix, center.1 + iy]) else {
-//                     continue;
-//                 };
-//                 closest = cell_nodes.iter().fold(closest, |acc, &i| {
-//                     let existing_node = &nodes[i];
-//                     let delta = Vector2::from(state) - Vector2::from(existing_node.state);
-//                     if REWIRE_DISTANCE.powf(2.) < delta.magnitude2() {
-//                         return acc;
-//                     }
-//                     let distance = delta.magnitude();
-//                     let (hit, _level) = collision_check(
-//                         existing_node.state,
-//                         start_state,
-//                         next_direction,
-//                         distance,
-//                         0.,
-//                     );
-//                     if hit {
-//                         return acc;
-//                     }
-//                     let this_cost = existing_node.cost + distance;
-//                     if let Some((_, acc_cost, _)) = acc {
-//                         if this_cost < acc_cost {
-//                             Some((i, this_cost, delta))
-//                         } else {
-//                             acc
-//                         }
-//                     } else {
-//                         Some((i, this_cost, delta))
-//                     }
-//                 })
-//             }
-//         }
-//         if let Some(closest) = closest {
-//             return Some(closest);
-//         }
-//     }
-//     None
-// }
+fn find_lowest_cost(
+    nodes: &[SearchNode],
+    state: AgentState,
+    mut collision_check: impl FnMut(AgentState, AgentState, f64, f64, f64) -> (bool, usize),
+    start_state: AgentState,
+    next_direction: f64,
+    grid_map: &GridMap,
+) -> Option<(usize, f64, Vector2<f64>)> {
+    let center = ((state.x / CELL_SIZE) as i32, (state.y / CELL_SIZE) as i32);
+    const MAX_SEARCH_CELL_RADIUS: i32 = 10;
+    // Gradually expand cells to scan
+    for cell_radius in 0..MAX_SEARCH_CELL_RADIUS {
+        let mut closest = None;
+        for iy in -cell_radius..=cell_radius {
+            for ix in -cell_radius..=cell_radius {
+                let Some(cell_nodes) = grid_map.get(&[center.0 + ix, center.1 + iy]) else {
+                    continue;
+                };
+                closest = cell_nodes.iter().fold(closest, |acc, &i| {
+                    let existing_node = &nodes[i];
+                    let delta = Vector2::from(state) - Vector2::from(existing_node.state);
+                    if REWIRE_DISTANCE.powf(2.) < delta.magnitude2() {
+                        return acc;
+                    }
+                    let distance = delta.magnitude();
+                    let (hit, _level) = collision_check(
+                        existing_node.state,
+                        start_state,
+                        next_direction,
+                        distance,
+                        0.,
+                    );
+                    if hit {
+                        return acc;
+                    }
+                    let this_cost = existing_node.cost + distance;
+                    if let Some((_, acc_cost, _)) = acc {
+                        if this_cost < acc_cost {
+                            Some((i, this_cost, delta))
+                        } else {
+                            acc
+                        }
+                    } else {
+                        Some((i, this_cost, delta))
+                    }
+                })
+            }
+        }
+        if let Some(closest) = closest {
+            return Some(closest);
+        }
+    }
+    None
+}
 
-// static FISHY_COUNT: AtomicUsize = AtomicUsize::new(0);
+fn detach_from(nodes: &mut [SearchNode], i: usize) {
+    if let Some(from) = nodes[i].from {
+        if let Some((to_index, _)) = nodes[from]
+            .to
+            .iter()
+            .copied()
+            .enumerate()
+            .find(|(_, j)| *j == i)
+        {
+            nodes[from].to.remove(to_index);
+        };
+        nodes[i].from = None;
+    }
+}
 
-// fn update_cost(nodes: &mut [SearchNode], cur: usize, recurse: usize) {
-//     if 100 < recurse {
-//         println!("update_cost: Something is fishy");
-//         FISHY_COUNT.fetch_add(1, Ordering::Relaxed);
-//         return;
-//     }
-//     let parent_cost = nodes[cur].cost;
-//     let parent_state = nodes[cur].state;
-//     // Work around borrow checker by temporarily taking the children
-//     let children = std::mem::take(&mut nodes[cur].to);
-//     for node in &children {
-//         let child = &mut nodes[*node];
-//         child.cost = parent_cost + Vector2::from(child.state).distance(parent_state.into());
-//         update_cost(nodes, *node, recurse + 1);
-//     }
-//     nodes[cur].to = children;
-// }
+static FISHY_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+fn update_cost(nodes: &mut [SearchNode], cur: usize, recurse: usize) {
+    if 100 < recurse {
+        println!("update_cost: Something is fishy");
+        FISHY_COUNT.fetch_add(1, Ordering::Relaxed);
+        return;
+    }
+    let parent_cost = nodes[cur].cost;
+    let parent_state = nodes[cur].state;
+    // Work around borrow checker by temporarily taking the children
+    let children = std::mem::take(&mut nodes[cur].to);
+    for node in &children {
+        let child = &mut nodes[*node];
+        child.cost = parent_cost + Vector2::from(child.state).distance(parent_state.into());
+        update_cost(nodes, *node, recurse + 1);
+    }
+    nodes[cur].to = children;
+}
