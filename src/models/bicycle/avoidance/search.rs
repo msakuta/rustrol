@@ -213,8 +213,8 @@ pub(super) fn search<S: StateSampler>(
             for _ in 0..10 {
                 let (res, time) =
                     measure_time(|| sampler.sample(nodes, env, grid_map, collision_check));
-                let (start, node) = res?;
                 sample_time += time;
+                let Some((start, node)) = res else { continue };
                 let cell_count = count_from_grid_map(grid_map, to_cell(node.state));
                 if MAX_CELL_COUNT < cell_count {
                     continue;

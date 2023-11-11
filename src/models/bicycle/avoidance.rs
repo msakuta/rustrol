@@ -20,7 +20,7 @@ use crate::{
     xor128::Xor128,
 };
 
-const SEARCH_WIDTH: f64 = 50.;
+const SEARCH_WIDTH: f64 = 100.;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AvoidanceMode {
@@ -444,7 +444,7 @@ pub(super) struct SearchEnv {
 impl SearchEnv {
     pub(super) fn new(wheel_base: f64) -> Self {
         Self {
-            expand_states: 100,
+            expand_states: 10,
             rng: Xor128::new(233221),
             skipped_nodes: 0,
             wheel_base,
