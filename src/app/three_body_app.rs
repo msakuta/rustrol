@@ -14,11 +14,12 @@ use crate::{
         calc_initial_moon, simulate_three_body, three_body_simulate_step, OrbitalParams,
         ThreeBodyParams, ThreeBodyResult, ThreeBodyState, GM, THREE_BODY_STATE,
     },
+    transform::Transform,
     vec2::Vec2,
     xor128::Xor128,
 };
 
-use super::{orbit_app::render_satellite, transform::Transform};
+use super::orbit_app::render_satellite;
 
 const SCALE: f32 = 50.;
 

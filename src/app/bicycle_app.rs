@@ -1,21 +1,20 @@
 use eframe::{
     egui::{self, Context, Frame, Ui},
     emath::Align2,
-    epaint::{pos2, Color32, FontId, PathShape, Pos2, Stroke},
+    epaint::{pos2, Color32, FontId, PathShape, Pos2, Rect, Stroke},
 };
 
 use crate::{
     models::bicycle::{
         bicycle_simulate_step, control_bicycle, interpolate_path, simulate_bicycle, Bicycle,
-        BicycleParams, BicyclePath, BicycleResult, MAX_STEERING, MAX_THRUST,
+        BicycleParams, BicyclePath, BicycleResult, BicycleRuntime, Obstacle, MAX_STEERING,
+        MAX_THRUST,
     },
+    transform::{half_rect, Transform},
     vec2::Vec2,
 };
 
-use super::{
-    transform::{half_rect, Transform},
-    SCALE,
-};
+use super::SCALE;
 
 pub struct BicycleApp {
     realtime: bool,
@@ -28,20 +27,23 @@ pub struct BicycleApp {
     playback_speed: f64,
     h_thrust: f64,
     v_thrust: f64,
+    obstacles: Vec<Obstacle>,
     params: BicycleParams,
+    runtime: BicycleRuntime,
     error_msg: Option<String>,
 }
 
 impl BicycleApp {
     pub fn new() -> Self {
         let params = BicycleParams::default();
-        let (bicycle_result, error_msg) = match simulate_bicycle(Vec2 { x: 0., y: 0. }, &params) {
-            Ok(res) => (res, None),
-            Err(e) => {
-                eprintln!("bicycle_model error: {e:?}");
-                (BicycleResult::default(), Some(e.to_string()))
-            }
-        };
+        let (bicycle_result, error_msg) =
+            match simulate_bicycle(Vec2 { x: 0., y: 0. }, &params, &[], &[]) {
+                Ok(res) => (res, None),
+                Err(e) => {
+                    eprintln!("bicycle_model error: {e:?}");
+                    (BicycleResult::default(), Some(e.to_string()))
+                }
+            };
         Self {
             realtime: false,
             paused: false,
@@ -53,7 +55,12 @@ impl BicycleApp {
             playback_speed: 0.5,
             h_thrust: 0.,
             v_thrust: 0.,
+            obstacles: vec![Obstacle {
+                min: Vec2::new(10., 10.),
+                max: Vec2::new(30., 30.),
+            }],
             params,
+            runtime: BicycleRuntime::default(),
             error_msg,
         }
     }
@@ -81,9 +88,19 @@ impl BicycleApp {
                         self.h_thrust,
                         self.v_thrust,
                         self.playback_speed as f64,
+                        &self.obstacles,
                     );
                 } else {
-                    match control_bicycle(&self.bicycle, &self.params, self.playback_speed) {
+                    if matches!(self.params.path_shape, BicyclePath::PathSearch) {
+                        self.runtime.update_path(&self.bicycle, &self.params);
+                    }
+                    match control_bicycle(
+                        &self.bicycle,
+                        &self.params,
+                        &self.runtime.path,
+                        self.playback_speed,
+                        &self.obstacles,
+                    ) {
                         Ok(state) => {
                             self.bicycle.pos = state.pos;
                             self.bicycle.heading = state.heading;
@@ -141,6 +158,13 @@ impl BicycleApp {
                         "Clicked Point",
                     )
                     .changed();
+                reset_path |= ui
+                    .radio_value(
+                        &mut self.params.path_shape,
+                        BicyclePath::PathSearch,
+                        "Path Search",
+                    )
+                    .changed();
             });
             reset_path |= ui
                 .radio_value(&mut self.params.path_shape, BicyclePath::Circle, "Circle")
@@ -191,16 +215,20 @@ impl BicycleApp {
             if matches!(self.params.path_shape, BicyclePath::ClickedPoint) {
                 self.params.path_params.path_waypoints = vec![self.bicycle.pos];
             }
-            self.params.reset_path();
+            self.runtime.reset_path(&self.params);
             if !self.realtime {
-                (self.bicycle_result, self.error_msg) =
-                    match simulate_bicycle(Vec2 { x: 0., y: 0. }, &self.params) {
-                        Ok(res) => (res, None),
-                        Err(e) => {
-                            eprintln!("bicycle_model error: {e:?}");
-                            (BicycleResult::default(), Some(e.to_string()))
-                        }
-                    };
+                (self.bicycle_result, self.error_msg) = match simulate_bicycle(
+                    Vec2 { x: 0., y: 0. },
+                    &self.params,
+                    &self.runtime.path,
+                    &self.obstacles,
+                ) {
+                    Ok(res) => (res, None),
+                    Err(e) => {
+                        eprintln!("bicycle_model error: {e:?}");
+                        (BicycleResult::default(), Some(e.to_string()))
+                    }
+                };
                 self.t = 0.;
             }
         }
@@ -270,7 +298,7 @@ impl BicycleApp {
                             .path_params
                             .path_waypoints
                             .push(paint_transform.from_pos2(pointer_pos));
-                        self.params.reset_path();
+                        self.runtime.reset_path(&self.params);
                         self.bicycle.prev_path_node = 0.;
                     }
                 }
@@ -310,8 +338,20 @@ impl BicycleApp {
                 }
             };
 
-            render_grid(GRID_SIZE / 10., (1., Color32::from_rgb(223, 223, 223)).into());
+            render_grid(
+                GRID_SIZE / 10.,
+                (1., Color32::from_rgb(223, 223, 223)).into(),
+            );
             render_grid(GRID_SIZE, (2., Color32::from_rgb(192, 192, 192)).into());
+
+            for obstacle in &self.obstacles {
+                let mut rect = Rect {
+                    min: paint_transform.to_pos2(obstacle.min),
+                    max: paint_transform.to_pos2(obstacle.max),
+                };
+                std::mem::swap(&mut rect.min.y, &mut rect.max.y);
+                painter.rect(rect, 0., Color32::WHITE, (1., Color32::BLACK));
+            }
 
             let rotation_matrix = |angle: f32| {
                 [
@@ -381,11 +421,11 @@ impl BicycleApp {
             };
 
             let paint_prediction_path = |closest_path_s: f64| {
-                if self.params.path.len() == 0 {
+                if self.runtime.path.len() == 0 {
                     return;
                 }
 
-                if let Some(target) = interpolate_path(&self.params.path, closest_path_s) {
+                if let Some(target) = interpolate_path(&self.runtime.path, closest_path_s) {
                     painter.circle(
                         paint_transform.to_pos2(target),
                         5.,
@@ -395,7 +435,7 @@ impl BicycleApp {
                 }
 
                 let path_predictions: Vec<_> = (0..self.params.prediction_states)
-                    .filter_map(|i| interpolate_path(&self.params.path, closest_path_s + i as f64))
+                    .filter_map(|i| interpolate_path(&self.runtime.path, closest_path_s + i as f64))
                     .map(|v| paint_transform.to_pos2(v))
                     .collect();
                 painter.add(PathShape::line(path_predictions.clone(), (3., RED)));
@@ -410,13 +450,17 @@ impl BicycleApp {
             let (pos, heading, steering) = if self.realtime {
                 if !matches!(self.params.path_shape, BicyclePath::DirectControl) {
                     painter.add(PathShape::line(
-                        self.params
+                        self.runtime
                             .path
                             .iter()
                             .map(|ofs| paint_transform.to_pos2(*ofs))
                             .collect(),
                         (2., PURPLE),
                     ));
+                }
+
+                if let Some(search_state) = &self.runtime.search_state {
+                    search_state.render_search_tree(&paint_transform, &painter);
                 }
 
                 painter.add(PathShape::line(
@@ -451,7 +495,7 @@ impl BicycleApp {
                 ));
 
                 painter.add(PathShape::line(
-                    self.params
+                    self.runtime
                         .path
                         .iter()
                         .map(|ofs| paint_transform.to_pos2(*ofs))

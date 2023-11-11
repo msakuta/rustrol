@@ -7,7 +7,9 @@ mod models {
     pub mod missile;
     pub mod orbital;
 }
+mod interpolation;
 mod ops;
+mod transform;
 mod vec2;
 mod xor128;
 
