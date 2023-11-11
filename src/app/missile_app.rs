@@ -8,11 +8,12 @@ use crate::{
     models::missile::{
         missile_simulate_step, simulate_missile, MissileParams, MissileState, MAX_THRUST,
     },
+    transform::Transform,
     vec2::Vec2,
     xor128::Xor128,
 };
 
-use super::{transform::Transform, SCALE};
+use super::SCALE;
 
 const DEFAULT_ORIENTATION: f64 = std::f64::consts::PI / 4.;
 

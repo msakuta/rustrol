@@ -9,11 +9,10 @@ use crate::{
         orbital_simulate_step, simulate_orbital, OrbitalParams, OrbitalResult, OrbitalState, GM,
         ORBITAL_STATE,
     },
+    transform::Transform,
     vec2::Vec2,
     xor128::Xor128,
 };
-
-use super::transform::Transform;
 
 const SCALE: f32 = 50.;
 

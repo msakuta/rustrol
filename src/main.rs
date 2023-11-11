@@ -7,7 +7,9 @@ mod models {
     pub mod missile;
     pub mod orbital;
 }
+mod interpolation;
 mod ops;
+mod transform;
 mod vec2;
 mod xor128;
 
@@ -53,4 +55,16 @@ fn main() {
         .await
         .expect("failed to start eframe");
     });
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn measure_time<T>(f: impl FnOnce() -> T) -> (T, f64) {
+    let start = std::time::Instant::now();
+    let ret = f();
+    (ret, start.elapsed().as_secs_f64())
+}
+
+#[cfg(target_arch = "wasm32")]
+fn measure_time<T>(f: impl FnOnce() -> T) -> (T, f64) {
+    (f(), 0.)
 }

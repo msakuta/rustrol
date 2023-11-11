@@ -3,14 +3,12 @@ use eframe::{
     epaint::{vec2, PathShape},
 };
 
-use super::{
-    transform::{half_rect, Transform},
-    LANDER_LEG_OFFSET, SCALE,
-};
+use super::{LANDER_LEG_OFFSET, SCALE};
 use crate::{
     models::lander::{
         lander_simulate_step, simulate_lander, LanderModel, LanderParams, LanderState,
     },
+    transform::{half_rect, Transform},
     vec2::Vec2,
 };
 

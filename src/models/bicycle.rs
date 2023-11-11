@@ -1,3 +1,5 @@
+mod avoidance;
+mod navigation;
 mod path_utils;
 
 use std::{collections::VecDeque, error::Error};
@@ -11,112 +13,26 @@ use crate::{
 };
 
 use self::path_utils::find_closest_node;
-pub(crate) use self::path_utils::interpolate_path;
+pub(crate) use self::{
+    avoidance::AvoidanceMode,
+    navigation::{BicycleNavigation, BicyclePath, PathParams},
+    path_utils::interpolate_path,
+};
 
 pub(crate) const MAX_THRUST: f64 = 0.5;
 pub(crate) const MAX_STEERING: f64 = std::f64::consts::PI / 4.;
 pub(crate) const STEERING_SPEED: f64 = std::f64::consts::PI * 0.01;
 const WHEEL_BASE: f64 = 4.;
 const RATE: f64 = 1e-4;
-const TARGET_SPEED: f64 = 1.;
-const CIRCLE_RADIUS: f64 = 50.;
-const SINE_PERIOD: f64 = 80.;
-const SINE_AMPLITUDE: f64 = 10.;
-const CRANK_PERIOD4: f64 = 20.;
-const CRANK_PERIOD: f64 = CRANK_PERIOD4 * 4.;
 
 pub struct BicycleParams {
     pub rate: f64,
     pub optim_iter: usize,
     pub max_iter: usize,
     pub prediction_states: usize,
-    pub path: Vec<Vec2<f64>>,
+    pub use_obstacles: bool,
     pub path_shape: BicyclePath,
     pub path_params: PathParams,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum BicyclePath {
-    DirectControl,
-    ClickedPoint,
-    Circle,
-    Sine,
-    Crank,
-}
-
-impl BicycleParams {
-    fn gen_path(path: BicyclePath, path_params: &PathParams, len: usize) -> Vec<Vec2<f64>> {
-        use std::f64::consts::PI;
-        if matches!(path, BicyclePath::DirectControl) {
-            return vec![];
-        }
-        (0..len)
-            .map(|t| match path {
-                BicyclePath::Circle => {
-                    let period = 2. * PI * path_params.circle_radius / path_params.target_speed;
-                    let phase = t as f64 * 2. * PI / period;
-                    Vec2::new(
-                        path_params.circle_radius * phase.sin(),
-                        path_params.circle_radius * (1. - phase.cos()),
-                    )
-                }
-                BicyclePath::Sine => {
-                    let phase = t as f64 / path_params.sine_period * PI * 2.;
-                    Vec2::new(
-                        t as f64 * path_params.target_speed,
-                        path_params.sine_amplitude * phase.sin(),
-                    )
-                }
-                BicyclePath::Crank => {
-                    let period = path_params.crank_period;
-                    let speed = path_params.target_speed;
-                    let ft = t as f64 % period;
-                    let period4 = period / 4.;
-                    let x_ofs = (t as f64).div_euclid(period) * period4 * 2. * speed;
-                    if ft < period4 {
-                        Vec2::new(x_ofs + ft * speed, 0.)
-                    } else if ft < period4 * 2. {
-                        Vec2::new(x_ofs + period4 * speed, (ft - period4) * speed)
-                    } else if ft < period4 * 3. {
-                        Vec2::new(
-                            x_ofs + period4 * speed + (ft - period4 * 2.) * speed,
-                            period4 * speed,
-                        )
-                    } else {
-                        Vec2::new(
-                            x_ofs + period4 * speed * 2.,
-                            period4 * speed - (ft - period4 * 3.) * speed,
-                        )
-                    }
-                }
-                BicyclePath::ClickedPoint | BicyclePath::DirectControl => {
-                    unreachable!()
-                }
-            })
-            .collect()
-    }
-
-    pub fn reset_path(&mut self) {
-        if let BicyclePath::ClickedPoint = self.path_shape {
-            let wps = &self.path_params.path_waypoints;
-            self.path.clear();
-            for (&prev, &next) in wps.iter().zip(wps.iter().skip(1)) {
-                let delta = next - prev;
-                let length = delta.length();
-                let len = length as usize;
-                self.path.extend((0..len).map(|i| {
-                    let f = i as f64 / len as f64;
-                    next * f + prev * (1. - f)
-                }));
-            }
-            return;
-        }
-        self.path = Self::gen_path(
-            self.path_shape,
-            &self.path_params,
-            self.max_iter + self.prediction_states,
-        );
-    }
 }
 
 impl Default for BicycleParams {
@@ -128,33 +44,16 @@ impl Default for BicycleParams {
             optim_iter: 50,
             max_iter: 200,
             prediction_states: 15,
+            use_obstacles: false,
             path_shape,
-            path: Self::gen_path(path_shape, &path_params, 250),
             path_params,
         }
     }
 }
 
-pub struct PathParams {
-    pub target_speed: f64,
-    pub circle_radius: f64,
-    pub sine_period: f64,
-    pub sine_amplitude: f64,
-    pub crank_period: f64,
-    pub path_waypoints: Vec<Vec2<f64>>,
-}
-
-impl Default for PathParams {
-    fn default() -> Self {
-        Self {
-            target_speed: TARGET_SPEED,
-            circle_radius: CIRCLE_RADIUS,
-            sine_period: SINE_PERIOD,
-            sine_amplitude: SINE_AMPLITUDE,
-            crank_period: CRANK_PERIOD,
-            path_waypoints: vec![],
-        }
-    }
+pub struct Obstacle {
+    pub min: Vec2<f64>,
+    pub max: Vec2<f64>,
 }
 
 pub(crate) struct Bicycle {
@@ -164,7 +63,6 @@ pub(crate) struct Bicycle {
     pub wheel_base: f64,
     pub pos_history: VecDeque<Vec2<f64>>,
     pub predictions: Vec<Vec2<f64>>,
-    pub prev_path_node: f64,
 }
 
 impl Bicycle {
@@ -177,7 +75,6 @@ impl Bicycle {
             wheel_base: WHEEL_BASE,
             pos_history: VecDeque::new(),
             predictions: vec![],
-            prev_path_node: 0.,
         }
     }
 
@@ -201,6 +98,7 @@ pub(crate) fn bicycle_simulate_step(
     h_thrust: f64,
     v_thrust: f64,
     playback_speed: f64,
+    obstacles: &[Obstacle],
 ) {
     let steering_speed = playback_speed * STEERING_SPEED;
     bicycle.steering = if (bicycle.steering - h_thrust).abs() < steering_speed {
@@ -211,7 +109,13 @@ pub(crate) fn bicycle_simulate_step(
         bicycle.steering - steering_speed
     };
     let direction = Vec2::new(bicycle.heading.cos(), bicycle.heading.sin());
-    bicycle.pos += direction * v_thrust * playback_speed;
+    let newpos = bicycle.pos + direction * v_thrust * playback_speed;
+    let hit_obs = obstacles.iter().find(|obs| {
+        obs.min.x < newpos.x && newpos.x < obs.max.x && obs.min.y < newpos.y && newpos.y < obs.max.y
+    });
+    if hit_obs.is_none() {
+        bicycle.pos = newpos;
+    }
 
     let theta_dot = v_thrust * bicycle.steering.tan() / bicycle.wheel_base;
     bicycle.heading += theta_dot * playback_speed;
@@ -234,9 +138,11 @@ pub struct BicycleResult {
 pub(crate) fn simulate_bicycle(
     pos: Vec2<f64>,
     params: &BicycleParams,
+    path: &[Vec2<f64>],
+    obstacles: &[Obstacle],
 ) -> Result<BicycleResult, Box<dyn Error>> {
     let tape = Tape::new();
-    let model = get_model(&tape, pos, params);
+    let model = get_model(&tape, pos, params, path);
 
     if let Ok(f) = std::fs::File::create("bicycle_graph.dot") {
         model.loss.eval();
@@ -252,10 +158,11 @@ pub(crate) fn simulate_bicycle(
     let mut prev_path_node = 0.;
     let bicycle_states = (0..params.max_iter)
         .map(|t| -> Result<BicycleResultState, Box<dyn Error>> {
-            let (h_thrust, v_thrust, closest_path_node) = optimize(&model, prev_path_node, params)?;
+            let (h_thrust, v_thrust, closest_path_node) =
+                optimize(&model, prev_path_node, params, path)?;
             prev_path_node = closest_path_node;
             // tape.dump_nodes();
-            let (pos, heading) = simulate_step(&model, t, h_thrust, v_thrust, 1.);
+            let (pos, heading) = simulate_step(&model, t, h_thrust, v_thrust, 1., obstacles);
             let first = model.predictions.first().unwrap();
             Ok(BicycleResultState {
                 pos,
@@ -276,11 +183,13 @@ pub(crate) fn simulate_bicycle(
 
 pub(crate) fn control_bicycle(
     bicycle: &Bicycle,
+    nav: &BicycleNavigation,
     params: &BicycleParams,
     playback_speed: f64,
+    obstacles: &[Obstacle],
 ) -> Result<BicycleResultState, Box<dyn Error>> {
     let tape = Tape::new();
-    let model = get_model(&tape, bicycle.pos, params);
+    let model = get_model(&tape, bicycle.pos, params, &nav.path);
 
     let Some(first) = model.predictions.first() else {
         return Err("Model does not have any predictions".into());
@@ -289,8 +198,9 @@ pub(crate) fn control_bicycle(
     first.heading.set(bicycle.heading).unwrap();
     first.steering.set(bicycle.steering).unwrap();
 
-    let (h_thrust, v_thrust, closest_path_node) = optimize(&model, bicycle.prev_path_node, params)?;
-    let (_pos, heading) = simulate_step(&model, 0, h_thrust, v_thrust, playback_speed);
+    let (h_thrust, v_thrust, closest_path_node) =
+        optimize(&model, nav.prev_path_node, params, &nav.path)?;
+    let (_pos, heading) = simulate_step(&model, 0, h_thrust, v_thrust, playback_speed, obstacles);
     tape.clear();
     let state = BicycleResultState {
         pos: first.pos.map(|v| v.eval_noclear()),
@@ -311,25 +221,26 @@ fn optimize(
     model: &Model,
     prev_path_node: f64,
     params: &BicycleParams,
+    path: &[Vec2<f64>],
 ) -> Result<(f64, f64, f64), Box<dyn Error>> {
     if model.predictions.len() <= 2 {
         return Err("Predictions need to be more than 2".into());
     }
     let prev_path_node = prev_path_node as usize;
-    let closest_path_s = if prev_path_node < params.path.len() {
+    let closest_path_s = if prev_path_node < path.len() {
         let pos = model
             .predictions
             .first()
             .unwrap()
             .pos
             .map(|x| x.eval_noclear());
-        find_closest_node(&params.path[prev_path_node..], pos) + prev_path_node as f64
+        find_closest_node(&path[prev_path_node..], pos) + prev_path_node as f64
     } else {
-        (params.path.len() - 1) as f64
+        (path.len() - 1) as f64
     };
 
     for (i, state) in model.predictions.iter().enumerate() {
-        if let Some(target) = interpolate_path(&params.path, closest_path_s + i as f64) {
+        if let Some(target) = interpolate_path(path, closest_path_s + i as f64) {
             state.target_pos.x.set(target.x)?;
             state.target_pos.y.set(target.y)?;
         }
@@ -362,6 +273,7 @@ fn simulate_step(
     h_thrust: f64,
     v_thrust: f64,
     delta_time: f64,
+    obstacles: &[Obstacle],
 ) -> (Vec2<f64>, f64) {
     let bicycle = model.predictions.first().unwrap();
     let heading = bicycle.heading.data().unwrap();
@@ -373,8 +285,13 @@ fn simulate_step(
     let direction = Vec2::new(heading.cos(), heading.sin());
     let oldpos = bicycle.pos.map(|x| x.data().unwrap());
     let newpos = oldpos + direction * v_thrust * delta_time;
-    bicycle.pos.x.set(newpos.x).unwrap();
-    bicycle.pos.y.set(newpos.y).unwrap();
+    let hit_obs = obstacles.iter().find(|obs| {
+        obs.min.x < newpos.x && newpos.x < obs.max.x && obs.min.y < newpos.y && newpos.y < obs.max.y
+    });
+    if hit_obs.is_none() {
+        bicycle.pos.x.set(newpos.x).unwrap();
+        bicycle.pos.y.set(newpos.y).unwrap();
+    }
     bicycle.heading.set(next_heading).unwrap();
     bicycle.steering.set(steering).unwrap();
 
@@ -467,7 +384,12 @@ struct Model<'a> {
     loss: TapeTerm<'a>,
 }
 
-fn get_model<'a>(tape: &'a Tape<f64>, initial_pos: Vec2<f64>, params: &BicycleParams) -> Model<'a> {
+fn get_model<'a>(
+    tape: &'a Tape<f64>,
+    initial_pos: Vec2<f64>,
+    params: &BicycleParams,
+    path: &[Vec2<f64>],
+) -> Model<'a> {
     let bicycle = BicycleTape::new(tape, initial_pos);
 
     bicycle
@@ -479,12 +401,7 @@ fn get_model<'a>(tape: &'a Tape<f64>, initial_pos: Vec2<f64>, params: &BicyclePa
 
     let mut bicycle1 = bicycle;
     let mut hist1 = vec![bicycle1];
-    for (_i, pos) in params
-        .path
-        .iter()
-        .enumerate()
-        .take(params.prediction_states)
-    {
+    for (_i, pos) in path.iter().enumerate().take(params.prediction_states) {
         bicycle1.simulate_model(tape, &mut hist1, *pos);
     }
 
