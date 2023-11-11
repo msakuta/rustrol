@@ -242,6 +242,10 @@ impl BicycleApp {
             }
         });
 
+        reset_path |= ui
+            .checkbox(&mut self.params.use_obstacles, "Obstacles:")
+            .changed();
+
         if reset_path {
             if matches!(self.params.path_shape, BicyclePath::ClickedPoint) {
                 self.params.path_params.path_waypoints = vec![self.bicycle.pos];

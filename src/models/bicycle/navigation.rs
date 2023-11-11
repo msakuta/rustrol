@@ -27,6 +27,13 @@ pub(crate) struct BicycleNavigation {
 impl BicycleNavigation {
     pub fn reset_path(&mut self, params: &BicycleParams) {
         self.search_state = None;
+
+        self.obstacles = if params.use_obstacles {
+            default_obstacles()
+        } else {
+            vec![]
+        };
+
         match params.path_shape {
             BicyclePath::ClickedPoint => {
                 let wps = &params.path_params.path_waypoints;
@@ -126,19 +133,27 @@ impl Default for BicycleNavigation {
             path: gen_path(path_shape, &path_params, 250),
             prev_path_node: 0.,
             search_state: None,
-            obstacles: vec![
-                Obstacle {
-                    min: Vec2::new(10., 10.),
-                    max: Vec2::new(30., 30.),
-                },
-                Obstacle {
-                    min: Vec2::new(10., -30.),
-                    max: Vec2::new(30., -10.),
-                },
-            ],
+            obstacles: vec![],
             env: SearchEnv::new(WHEEL_BASE),
         }
     }
+}
+
+fn default_obstacles() -> Vec<Obstacle> {
+    vec![
+        Obstacle {
+            min: Vec2::new(20., 20.),
+            max: Vec2::new(40., 70.),
+        },
+        Obstacle {
+            min: Vec2::new(20., -40.),
+            max: Vec2::new(70., -20.),
+        },
+        Obstacle {
+            min: Vec2::new(-50., -40.),
+            max: Vec2::new(-30., 40.),
+        },
+    ]
 }
 
 fn gen_path(path: BicyclePath, path_params: &PathParams, len: usize) -> Vec<Vec2<f64>> {

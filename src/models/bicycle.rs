@@ -30,6 +30,7 @@ pub struct BicycleParams {
     pub optim_iter: usize,
     pub max_iter: usize,
     pub prediction_states: usize,
+    pub use_obstacles: bool,
     pub path_shape: BicyclePath,
     pub path_params: PathParams,
 }
@@ -43,6 +44,7 @@ impl Default for BicycleParams {
             optim_iter: 50,
             max_iter: 200,
             prediction_states: 15,
+            use_obstacles: false,
             path_shape,
             path_params,
         }
