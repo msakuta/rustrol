@@ -53,7 +53,7 @@ fn check_goal(
     goal: &AgentState,
     nodes: &mut [SearchNode],
 ) -> Option<Vec<usize>> {
-    if !compare_distance(&nodes[start].state, &goal, (DIST_RADIUS * 2.).powf(2.)) {
+    if !compare_distance(&nodes[start].state, &goal, DIST_RADIUS.powf(2.)) {
         return None;
     }
     let mut node = start;

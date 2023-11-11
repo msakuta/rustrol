@@ -1,6 +1,9 @@
 //! Rendering the search tree, isolated from the rest of avoidance to minimize dependency to egui
 
-use eframe::{egui::Painter, epaint::Color32};
+use eframe::{
+    egui::Painter,
+    epaint::{Color32, PathShape},
+};
 
 use super::SearchState;
 use crate::transform::PaintTransform;
@@ -20,6 +23,17 @@ impl SearchState {
                     (1., brush),
                 );
             }
+        }
+
+        if let Some(found_path) = &self.found_path {
+            let points = found_path
+                .iter()
+                .map(|i| transform.to_pos2(nodes[*i].state.into()))
+                .collect();
+            painter.add(PathShape::line(
+                points,
+                (2., Color32::from_rgb(0, 255, 191)),
+            ));
         }
     }
 }

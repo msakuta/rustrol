@@ -202,7 +202,7 @@ impl SearchNode {
     }
 }
 
-pub const DIST_RADIUS: f64 = 1.5 * WHEEL_BASE;
+pub const DIST_RADIUS: f64 = 0.5 * WHEEL_BASE;
 const DIST_THRESHOLD: f64 = DIST_RADIUS * DIST_RADIUS;
 
 fn compare_state(s1: &AgentState, s2: &AgentState) -> bool {
@@ -234,6 +234,17 @@ pub struct SearchState {
     last_solution: Option<usize>,
     pub(super) found_path: Option<Vec<usize>>,
     pub(super) grid_map: GridMap,
+}
+
+impl SearchState {
+    pub fn get_path(&self) -> Option<Vec<Vec2<f64>>> {
+        self.found_path.as_ref().map(|path| {
+            path.iter()
+                .rev()
+                .map(|i| self.search_tree[*i].state.into())
+                .collect()
+        })
+    }
 }
 
 /// RRT* search

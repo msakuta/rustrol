@@ -7,7 +7,7 @@ use eframe::{
 use crate::{
     models::bicycle::{
         bicycle_simulate_step, control_bicycle, interpolate_path, simulate_bicycle, Bicycle,
-        BicycleParams, BicyclePath, BicycleResult, BicycleRuntime, Obstacle, MAX_STEERING,
+        BicycleNavigation, BicycleParams, BicyclePath, BicycleResult, Obstacle, MAX_STEERING,
         MAX_THRUST,
     },
     transform::{half_rect, Transform},
@@ -29,7 +29,7 @@ pub struct BicycleApp {
     v_thrust: f64,
     obstacles: Vec<Obstacle>,
     params: BicycleParams,
-    runtime: BicycleRuntime,
+    nav: BicycleNavigation,
     error_msg: Option<String>,
 }
 
@@ -60,7 +60,7 @@ impl BicycleApp {
                 max: Vec2::new(30., 30.),
             }],
             params,
-            runtime: BicycleRuntime::default(),
+            nav: BicycleNavigation::default(),
             error_msg,
         }
     }
@@ -92,12 +92,12 @@ impl BicycleApp {
                     );
                 } else {
                     if matches!(self.params.path_shape, BicyclePath::PathSearch) {
-                        self.runtime.update_path(&self.bicycle, &self.params);
+                        self.nav.update_path(&self.bicycle, &self.params);
                     }
                     match control_bicycle(
                         &self.bicycle,
+                        &self.nav,
                         &self.params,
-                        &self.runtime.path,
                         self.playback_speed,
                         &self.obstacles,
                     ) {
@@ -106,7 +106,7 @@ impl BicycleApp {
                             self.bicycle.heading = state.heading;
                             self.bicycle.steering = state.steering;
                             self.bicycle.predictions = state.predictions;
-                            self.bicycle.prev_path_node = state.closest_path_node;
+                            self.nav.prev_path_node = state.closest_path_node;
                         }
                         Err(e) => eprintln!("Error: {e}"),
                     }
@@ -215,12 +215,12 @@ impl BicycleApp {
             if matches!(self.params.path_shape, BicyclePath::ClickedPoint) {
                 self.params.path_params.path_waypoints = vec![self.bicycle.pos];
             }
-            self.runtime.reset_path(&self.params);
+            self.nav.reset_path(&self.params);
             if !self.realtime {
                 (self.bicycle_result, self.error_msg) = match simulate_bicycle(
                     Vec2 { x: 0., y: 0. },
                     &self.params,
-                    &self.runtime.path,
+                    &self.nav.path,
                     &self.obstacles,
                 ) {
                     Ok(res) => (res, None),
@@ -298,8 +298,8 @@ impl BicycleApp {
                             .path_params
                             .path_waypoints
                             .push(paint_transform.from_pos2(pointer_pos));
-                        self.runtime.reset_path(&self.params);
-                        self.bicycle.prev_path_node = 0.;
+                        self.nav.reset_path(&self.params);
+                        self.nav.prev_path_node = 0.;
                     }
                 }
             }
@@ -421,11 +421,11 @@ impl BicycleApp {
             };
 
             let paint_prediction_path = |closest_path_s: f64| {
-                if self.runtime.path.len() == 0 {
+                if self.nav.path.len() == 0 {
                     return;
                 }
 
-                if let Some(target) = interpolate_path(&self.runtime.path, closest_path_s) {
+                if let Some(target) = interpolate_path(&self.nav.path, closest_path_s) {
                     painter.circle(
                         paint_transform.to_pos2(target),
                         5.,
@@ -435,7 +435,7 @@ impl BicycleApp {
                 }
 
                 let path_predictions: Vec<_> = (0..self.params.prediction_states)
-                    .filter_map(|i| interpolate_path(&self.runtime.path, closest_path_s + i as f64))
+                    .filter_map(|i| interpolate_path(&self.nav.path, closest_path_s + i as f64))
                     .map(|v| paint_transform.to_pos2(v))
                     .collect();
                 painter.add(PathShape::line(path_predictions.clone(), (3., RED)));
@@ -450,7 +450,7 @@ impl BicycleApp {
             let (pos, heading, steering) = if self.realtime {
                 if !matches!(self.params.path_shape, BicyclePath::DirectControl) {
                     painter.add(PathShape::line(
-                        self.runtime
+                        self.nav
                             .path
                             .iter()
                             .map(|ofs| paint_transform.to_pos2(*ofs))
@@ -459,7 +459,7 @@ impl BicycleApp {
                     ));
                 }
 
-                if let Some(search_state) = &self.runtime.search_state {
+                if let Some(search_state) = &self.nav.search_state {
                     search_state.render_search_tree(&paint_transform, &painter);
                 }
 
@@ -476,7 +476,7 @@ impl BicycleApp {
 
                 if !matches!(self.params.path_shape, BicyclePath::DirectControl) {
                     paint_predictions(&self.bicycle.predictions);
-                    paint_prediction_path(self.bicycle.prev_path_node);
+                    paint_prediction_path(self.nav.prev_path_node);
                 }
 
                 (
@@ -495,7 +495,7 @@ impl BicycleApp {
                 ));
 
                 painter.add(PathShape::line(
-                    self.runtime
+                    self.nav
                         .path
                         .iter()
                         .map(|ofs| paint_transform.to_pos2(*ofs))

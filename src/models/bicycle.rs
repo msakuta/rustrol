@@ -116,14 +116,15 @@ impl Default for BicycleParams {
     }
 }
 
-/// State for the real time simulation.
-pub(crate) struct BicycleRuntime {
+/// Vehicle state regarding navigation.
+pub(crate) struct BicycleNavigation {
     pub path: Vec<Vec2<f64>>,
+    pub prev_path_node: f64,
     pub search_state: Option<SearchState>,
     env: SearchEnv,
 }
 
-impl BicycleRuntime {
+impl BicycleNavigation {
     pub fn reset_path(&mut self, params: &BicycleParams) {
         self.search_state = None;
         match params.path_shape {
@@ -145,6 +146,7 @@ impl BicycleRuntime {
                 let agent = AgentState::new(0., 0., 0.);
                 let goal = AgentState::new(40., 40., 0.);
                 avoidance_search(&mut self.search_state, &mut self.env, &agent, &goal, params);
+                self.prev_path_node = 0.;
                 return;
             }
             _ => {}
@@ -155,28 +157,39 @@ impl BicycleRuntime {
             &params.path_params,
             params.max_iter + params.prediction_states,
         );
+        self.prev_path_node = 0.;
     }
 
     pub(crate) fn update_path(&mut self, bicycle: &Bicycle, params: &BicycleParams) {
         if matches!(params.path_shape, BicyclePath::PathSearch) {
             let goal = AgentState::new(40., 40., 0.);
-            avoidance_search(
+            let found_path = avoidance_search(
                 &mut self.search_state,
                 &mut self.env,
                 &bicycle.into(),
                 &goal,
                 params,
             );
+
+            if found_path {
+                if let Some(sstate) = &self.search_state {
+                    if let Some(path) = sstate.get_path() {
+                        self.path = path;
+                        self.prev_path_node = 0.;
+                    }
+                }
+            }
         }
     }
 }
 
-impl Default for BicycleRuntime {
+impl Default for BicycleNavigation {
     fn default() -> Self {
         let path_shape = BicyclePath::Crank;
         let path_params = PathParams::default();
         Self {
             path: BicycleParams::gen_path(path_shape, &path_params, 250),
+            prev_path_node: 0.,
             search_state: None,
             env: SearchEnv::new(WHEEL_BASE),
         }
@@ -217,7 +230,6 @@ pub(crate) struct Bicycle {
     pub wheel_base: f64,
     pub pos_history: VecDeque<Vec2<f64>>,
     pub predictions: Vec<Vec2<f64>>,
-    pub prev_path_node: f64,
 }
 
 impl Bicycle {
@@ -230,7 +242,6 @@ impl Bicycle {
             wheel_base: WHEEL_BASE,
             pos_history: VecDeque::new(),
             predictions: vec![],
-            prev_path_node: 0.,
         }
     }
 
@@ -339,13 +350,13 @@ pub(crate) fn simulate_bicycle(
 
 pub(crate) fn control_bicycle(
     bicycle: &Bicycle,
+    nav: &BicycleNavigation,
     params: &BicycleParams,
-    path: &[Vec2<f64>],
     playback_speed: f64,
     obstacles: &[Obstacle],
 ) -> Result<BicycleResultState, Box<dyn Error>> {
     let tape = Tape::new();
-    let model = get_model(&tape, bicycle.pos, params, path);
+    let model = get_model(&tape, bicycle.pos, params, &nav.path);
 
     let Some(first) = model.predictions.first() else {
         return Err("Model does not have any predictions".into());
@@ -355,7 +366,7 @@ pub(crate) fn control_bicycle(
     first.steering.set(bicycle.steering).unwrap();
 
     let (h_thrust, v_thrust, closest_path_node) =
-        optimize(&model, bicycle.prev_path_node, params, path)?;
+        optimize(&model, nav.prev_path_node, params, &nav.path)?;
     let (_pos, heading) = simulate_step(&model, 0, h_thrust, v_thrust, playback_speed, obstacles);
     tape.clear();
     let state = BicycleResultState {
