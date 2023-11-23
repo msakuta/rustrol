@@ -133,7 +133,7 @@ pub(crate) fn spline_length(c_points: &[Vec2<f64>]) -> Option<f64> {
         return None;
     }
     const SPLITS: usize = 32;
-    Some((0..SPLITS).zip((1..=SPLITS)).fold(0., |acc, (f, g)| {
+    Some((0..SPLITS).zip(1..=SPLITS).fold(0., |acc, (f, g)| {
         let ff = f as f64 / SPLITS as f64;
         let gg = g as f64 / SPLITS as f64;
         let Some(fpos) = spline_interp(c_points, ff) else {

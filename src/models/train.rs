@@ -1,5 +1,3 @@
-use std::ops::Div;
-
 use crate::vec2::Vec2;
 
 use super::bicycle::{interpolate_path, interpolate_path_heading, spline_interp, spline_length};

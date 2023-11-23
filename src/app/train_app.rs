@@ -16,6 +16,7 @@ const THRUST_ACCEL: f64 = 0.001;
 
 pub struct TrainApp {
     transform: Transform,
+    paused: bool,
     train: Train,
     thrust: f64,
 }
@@ -24,12 +25,16 @@ impl TrainApp {
     pub fn new() -> Self {
         Self {
             transform: Transform::new(SCALE),
+            paused: false,
             train: Train::new(),
             thrust: 0.,
         }
     }
 
     pub fn update(&mut self, ctx: &Context) {
+        if self.paused {
+            return;
+        }
         ctx.input(|input| {
             for key in input.keys_down.iter() {
                 match key {
@@ -40,6 +45,10 @@ impl TrainApp {
             }
         });
         self.train.update(self.thrust);
+    }
+
+    pub fn update_panel(&mut self, ui: &mut Ui) {
+        ui.checkbox(&mut self.paused, "Paused");
     }
 
     pub fn paint_graph(&mut self, ui: &mut Ui) {

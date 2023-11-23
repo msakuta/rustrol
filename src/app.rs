@@ -93,7 +93,7 @@ impl RustrolApp {
             AppSelect::Orbital(ref mut app) => app.update_panel(ui),
             AppSelect::ThreeBody(ref mut app) => app.update_panel(ui),
             AppSelect::Bicycle(ref mut app) => app.update_panel(ui),
-            AppSelect::Train(ref mut app) => {}
+            AppSelect::Train(ref mut app) => app.update_panel(ui),
         });
     }
 }
