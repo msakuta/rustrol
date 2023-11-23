@@ -16,7 +16,7 @@ use self::path_utils::find_closest_node;
 pub(crate) use self::{
     avoidance::AvoidanceMode,
     navigation::{BicycleNavigation, BicyclePath, PathParams},
-    path_utils::interpolate_path,
+    path_utils::{interpolate_path, interpolate_path_heading, spline_interp, spline_length},
 };
 
 pub(crate) const MAX_THRUST: f64 = 0.5;

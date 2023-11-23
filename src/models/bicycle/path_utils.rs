@@ -89,3 +89,59 @@ pub(crate) fn interpolate_path(path: &[Vec2<f64>], s: f64) -> Option<Vec2<f64>> 
     let fr = s.rem_euclid(1.);
     Some(prev + segment_delta * fr)
 }
+
+pub(crate) fn interpolate_path_heading(path: &[Vec2<f64>], s: f64) -> Option<f64> {
+    if path.len() < 2 {
+        return None;
+    }
+    if s <= 0. {
+        let delta = path[1] - path[0];
+        return Some(delta.y.atan2(delta.x));
+    }
+    if (path.len() - 1) as f64 <= s {
+        let delta = path[path.len() - 1] - path[path.len() - 2];
+        return Some(delta.y.atan2(delta.x));
+    }
+    let i = s as usize;
+    let (prev, next) = (path[i], path[i + 1]);
+    let delta = next - prev;
+    Some(delta.y.atan2(delta.x))
+}
+
+/// Quadratic spline, uses control points
+pub(crate) fn spline_interp(c_points: &[Vec2<f64>], s: f64) -> Option<Vec2<f64>> {
+    if c_points.len() < 3 {
+        return None;
+    }
+    if s < 0. {
+        return Some(c_points[0]);
+    }
+    if 1. < s {
+        return Some(c_points[2]);
+    }
+    let delta1 = c_points[1] - c_points[0];
+    let interp1 = c_points[0] + delta1 * s;
+    let delta2 = c_points[2] - c_points[1];
+    let interp2 = c_points[1] + delta2 * s;
+    let delta12 = interp2 - interp1;
+    Some(interp1 + delta12 * s)
+}
+
+/// Estimate the total length
+pub(crate) fn spline_length(c_points: &[Vec2<f64>]) -> Option<f64> {
+    if c_points.len() < 3 {
+        return None;
+    }
+    const SPLITS: usize = 32;
+    Some((0..SPLITS).zip((1..=SPLITS)).fold(0., |acc, (f, g)| {
+        let ff = f as f64 / SPLITS as f64;
+        let gg = g as f64 / SPLITS as f64;
+        let Some(fpos) = spline_interp(c_points, ff) else {
+            return acc;
+        };
+        let Some(gpos) = spline_interp(c_points, gg) else {
+            return acc;
+        };
+        acc + (fpos - gpos).length()
+    }))
+}

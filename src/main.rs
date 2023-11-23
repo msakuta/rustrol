@@ -6,6 +6,7 @@ mod models {
     pub mod lander;
     pub mod missile;
     pub mod orbital;
+    pub mod train;
 }
 mod interpolation;
 mod ops;
