@@ -4,7 +4,7 @@ use eframe::{
 };
 
 use crate::{
-    models::train::{Train, C_POINTS},
+    models::train::Train,
     transform::{half_rect, Transform},
     vec2::Vec2,
 };
@@ -51,9 +51,16 @@ impl TrainApp {
                 ui.input(|i| self.transform.handle_mouse(i, half_rect(&response.rect)));
             }
 
-            let train = &self.train;
-
             let paint_transform = self.transform.into_paint(&response);
+
+            if response.clicked() {
+                if let Some(pointer) = response.interact_pointer_pos() {
+                    let pos = paint_transform.from_pos2(pointer);
+                    self.train.control_points.push(pos);
+                    self.train.recompute_track();
+                    println!("Added point {pos:?}");
+                }
+            }
 
             const GRID_SIZE: f32 = 50.;
             let render_grid = |grid_size: f32, stroke: Stroke| {
@@ -109,7 +116,9 @@ impl TrainApp {
             };
             let scale_vec = |scale: f32, vec: &[f32; 2]| [vec[0] * scale, vec[1] * scale];
 
-            let c_points = C_POINTS
+            let c_points = self
+                .train
+                .control_points
                 .iter()
                 .map(|ofs| Pos2::from(paint_transform.to_pos2(*ofs)))
                 .collect();
