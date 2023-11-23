@@ -17,6 +17,7 @@ pub struct TrainApp {
     paused: bool,
     follow_train: bool,
     train: Train,
+    new_station: String,
 }
 
 impl TrainApp {
@@ -26,6 +27,7 @@ impl TrainApp {
             paused: false,
             follow_train: true,
             train: Train::new(),
+            new_station: "New Station".to_string(),
         }
     }
 
@@ -52,6 +54,13 @@ impl TrainApp {
         ui.group(|ui| {
             for (i, station) in self.train.stations.iter().enumerate() {
                 ui.radio_value(&mut self.train.target_station, Some(i), &station.name);
+            }
+            ui.text_edit_singleline(&mut self.new_station);
+            if ui.button("Add station").clicked() {
+                self.train.stations.push(Station {
+                    name: std::mem::take(&mut self.new_station),
+                    s: self.train.track.len() as f64 - 10.,
+                })
             }
         });
     }
