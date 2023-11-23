@@ -16,6 +16,7 @@ pub struct TrainApp {
     transform: Transform,
     paused: bool,
     follow_train: bool,
+    show_track_nodes: bool,
     train: Train,
     new_station: String,
 }
@@ -26,6 +27,7 @@ impl TrainApp {
             transform: Transform::new(SCALE),
             paused: false,
             follow_train: true,
+            show_track_nodes: false,
             train: Train::new(),
             new_station: "New Station".to_string(),
         }
@@ -51,6 +53,7 @@ impl TrainApp {
     pub fn update_panel(&mut self, ui: &mut Ui) {
         ui.checkbox(&mut self.paused, "Paused");
         ui.checkbox(&mut self.follow_train, "Follow train");
+        ui.checkbox(&mut self.show_track_nodes, "Show track nodes");
         ui.group(|ui| {
             for (i, station) in self.train.stations.iter().enumerate() {
                 ui.radio_value(&mut self.train.target_station, Some(i), &station.name);
@@ -163,8 +166,10 @@ impl TrainApp {
                 .map(|ofs| Pos2::from(paint_transform.to_pos2(*ofs)))
                 .collect();
 
-            for track_point in &track_points {
-                painter.circle_filled(*track_point, 3., Color32::from_rgb(255, 0, 255));
+            if self.show_track_nodes {
+                for track_point in &track_points {
+                    painter.circle_filled(*track_point, 3., Color32::from_rgb(255, 0, 255));
+                }
             }
 
             let track_line = PathShape::line(track_points, (2., Color32::from_rgb(255, 0, 255)));
