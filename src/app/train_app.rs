@@ -1,24 +1,22 @@
 use eframe::{
     egui::{self, Context, Frame, Ui},
-    epaint::{pos2, Color32, PathShape, Pos2, Stroke},
+    emath::Align2,
+    epaint::{pos2, Color32, FontId, PathShape, Pos2, Stroke},
 };
 
 use crate::{
-    models::train::Train,
+    models::train::{Station, Train},
     transform::{half_rect, Transform},
     vec2::Vec2,
 };
 
 use super::SCALE;
 
-const MAX_THRUST: f64 = 1.;
-const THRUST_ACCEL: f64 = 0.001;
-
 pub struct TrainApp {
     transform: Transform,
     paused: bool,
+    follow_train: bool,
     train: Train,
-    thrust: f64,
 }
 
 impl TrainApp {
@@ -26,8 +24,8 @@ impl TrainApp {
         Self {
             transform: Transform::new(SCALE),
             paused: false,
+            follow_train: true,
             train: Train::new(),
-            thrust: 0.,
         }
     }
 
@@ -35,20 +33,27 @@ impl TrainApp {
         if self.paused {
             return;
         }
+        let mut thrust = 0.;
         ctx.input(|input| {
             for key in input.keys_down.iter() {
                 match key {
-                    egui::Key::W => self.thrust = (self.thrust + THRUST_ACCEL).min(MAX_THRUST),
-                    egui::Key::S => self.thrust = (self.thrust - THRUST_ACCEL).max(-MAX_THRUST),
+                    egui::Key::W => thrust += 1.,
+                    egui::Key::S => thrust -= 1.,
                     _ => {}
                 }
             }
         });
-        self.train.update(self.thrust);
+        self.train.update(thrust);
     }
 
     pub fn update_panel(&mut self, ui: &mut Ui) {
         ui.checkbox(&mut self.paused, "Paused");
+        ui.checkbox(&mut self.follow_train, "Follow train");
+        ui.group(|ui| {
+            for (i, station) in self.train.stations.iter().enumerate() {
+                ui.radio_value(&mut self.train.target_station, Some(i), &station.name);
+            }
+        });
     }
 
     pub fn paint_graph(&mut self, ui: &mut Ui) {
@@ -61,6 +66,13 @@ impl TrainApp {
             }
 
             let paint_transform = self.transform.into_paint(&response);
+
+            if self.follow_train {
+                if let Some(train_pos) = self.train.train_pos(0) {
+                    self.transform
+                        .follow([train_pos.x as f32, train_pos.y as f32]);
+                }
+            }
 
             if response.clicked() {
                 if let Some(pointer) = response.interact_pointer_pos() {
@@ -149,6 +161,49 @@ impl TrainApp {
             let track_line = PathShape::line(track_points, (2., Color32::from_rgb(255, 0, 255)));
             painter.add(track_line);
 
+            const STATION_HEIGHT: f64 = 2.;
+
+            let render_station = |station: &Station, is_target: bool| {
+                let Some(pos) = self.train.s_pos(station.s) else {
+                    return;
+                };
+                painter.line_segment(
+                    [
+                        paint_transform.to_pos2(pos),
+                        paint_transform.to_pos2(pos + Vec2::new(0., STATION_HEIGHT)),
+                    ],
+                    (3., Color32::from_rgb(0, 127, 63)),
+                );
+
+                painter.add(PathShape::convex_polygon(
+                    [[0., 0.], [1., -0.5], [0., -1.]]
+                        .into_iter()
+                        .map(|ofs| {
+                            paint_transform
+                                .to_pos2(pos + Vec2::new(ofs[0], STATION_HEIGHT + ofs[1]))
+                        })
+                        .collect(),
+                    Color32::from_rgb(63, 95, 0),
+                    (1., Color32::from_rgb(31, 63, 0)),
+                ));
+
+                painter.text(
+                    paint_transform.to_pos2(pos),
+                    Align2::CENTER_BOTTOM,
+                    &station.name,
+                    FontId::proportional(16.),
+                    if is_target {
+                        Color32::RED
+                    } else {
+                        Color32::BLACK
+                    },
+                );
+            };
+
+            for (i, station) in self.train.stations.iter().enumerate() {
+                render_station(station, self.train.target_station == Some(i));
+            }
+
             let paint_train = |pos: &Vec2<f64>, heading: f64| {
                 let base_pos = paint_transform.to_pos2(*pos).to_vec2();
                 let rotation = rotation_matrix(heading as f32);
@@ -185,7 +240,7 @@ impl TrainApp {
 
             for i in 0..3 {
                 if let Some((train_pos, train_heading)) =
-                    self.train.pos(i).zip(self.train.heading(i))
+                    self.train.train_pos(i).zip(self.train.heading(i))
                 {
                     paint_train(&train_pos, train_heading);
                 }
