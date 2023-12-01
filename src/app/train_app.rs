@@ -159,21 +159,45 @@ impl TrainApp {
             let c_points_line = PathShape::line(c_points, (1., Color32::from_rgb(127, 0, 127)));
             painter.add(c_points_line);
 
-            let track_points: Vec<_> = self
-                .train
-                .track
-                .iter()
-                .map(|ofs| Pos2::from(paint_transform.to_pos2(*ofs)))
-                .collect();
+            if 1. < self.transform.scale() {
+                let parallel_offset = |ofs| {
+                    let paint_transform = &paint_transform;
+                    move |(prev, next): (&Vec2<f64>, &Vec2<f64>)| {
+                        let delta = (*next - *prev).normalized();
+                        Pos2::from(paint_transform.to_pos2(delta.left90() * ofs + *prev))
+                    }
+                };
 
-            if self.show_track_nodes {
-                for track_point in &track_points {
-                    painter.circle_filled(*track_point, 3., Color32::from_rgb(255, 0, 255));
+                for ofs in [1.25, -1.25] {
+                    let left_rail_points = self
+                        .train
+                        .track
+                        .iter()
+                        .zip(self.train.track.iter().skip(1))
+                        .map(parallel_offset(ofs))
+                        .collect();
+                    let left_rail =
+                        PathShape::line(left_rail_points, (1., Color32::from_rgb(255, 0, 255)));
+                    painter.add(left_rail);
                 }
-            }
+            } else {
+                let track_points: Vec<_> = self
+                    .train
+                    .track
+                    .iter()
+                    .map(|ofs| Pos2::from(paint_transform.to_pos2(*ofs)))
+                    .collect();
 
-            let track_line = PathShape::line(track_points, (2., Color32::from_rgb(255, 0, 255)));
-            painter.add(track_line);
+                if self.show_track_nodes {
+                    for track_point in &track_points {
+                        painter.circle_filled(*track_point, 3., Color32::from_rgb(255, 0, 255));
+                    }
+                }
+
+                let track_line =
+                    PathShape::line(track_points, (2., Color32::from_rgb(255, 0, 255)));
+                painter.add(track_line);
+            }
 
             const STATION_HEIGHT: f64 = 2.;
 
