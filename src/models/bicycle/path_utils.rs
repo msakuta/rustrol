@@ -108,8 +108,8 @@ pub(crate) fn interpolate_path_heading(path: &[Vec2<f64>], s: f64) -> Option<f64
     Some(delta.y.atan2(delta.x))
 }
 
-/// Quadratic spline, uses control points
-pub(crate) fn spline_interp(c_points: &[Vec2<f64>], s: f64) -> Option<Vec2<f64>> {
+/// Quadratic Bezier curve, uses control points
+pub(crate) fn _bezier_interp(c_points: &[Vec2<f64>], s: f64) -> Option<Vec2<f64>> {
     if c_points.len() < 3 {
         return None;
     }
@@ -128,7 +128,7 @@ pub(crate) fn spline_interp(c_points: &[Vec2<f64>], s: f64) -> Option<Vec2<f64>>
 }
 
 /// Estimate the total length
-pub(crate) fn spline_length(c_points: &[Vec2<f64>]) -> Option<f64> {
+pub(crate) fn _bezier_length(c_points: &[Vec2<f64>]) -> Option<f64> {
     if c_points.len() < 3 {
         return None;
     }
@@ -136,10 +136,10 @@ pub(crate) fn spline_length(c_points: &[Vec2<f64>]) -> Option<f64> {
     Some((0..SPLITS).zip(1..=SPLITS).fold(0., |acc, (f, g)| {
         let ff = f as f64 / SPLITS as f64;
         let gg = g as f64 / SPLITS as f64;
-        let Some(fpos) = spline_interp(c_points, ff) else {
+        let Some(fpos) = _bezier_interp(c_points, ff) else {
             return acc;
         };
-        let Some(gpos) = spline_interp(c_points, gg) else {
+        let Some(gpos) = _bezier_interp(c_points, gg) else {
             return acc;
         };
         acc + (fpos - gpos).length()

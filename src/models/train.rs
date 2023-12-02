@@ -2,8 +2,7 @@ use crate::vec2::Vec2;
 
 use super::bicycle::{
     interpolate_path, interpolate_path_heading,
-    path_utils::{wrap_angle, CircleArc, PathSegment},
-    spline_interp, spline_length,
+    path_utils::{wrap_angle, CircleArc, PathSegment, _bezier_interp, _bezier_length},
 };
 
 const CAR_LENGTH: f64 = 1.;
@@ -12,7 +11,7 @@ const MAX_SPEED: f64 = 1.;
 const THRUST_ACCEL: f64 = 0.001;
 
 const SEGMENT_LENGTH: f64 = 10.;
-pub(crate) const C_POINTS: [Vec2<f64>; 11] = [
+pub(crate) const _C_POINTS: [Vec2<f64>; 11] = [
     Vec2::new(0., 0.),
     Vec2::new(50., 0.),
     Vec2::new(100., 0.),
@@ -151,14 +150,14 @@ impl Train {
     }
 }
 
-fn compute_track(control_points: &[Vec2<f64>]) -> Vec<Vec2<f64>> {
+fn _compute_track(control_points: &[Vec2<f64>]) -> Vec<Vec2<f64>> {
     let segment_lengths =
         control_points
             .windows(3)
             .enumerate()
             .fold(vec![], |mut acc, (cur_i, cur)| {
                 if cur_i % 2 == 0 {
-                    acc.push(spline_length(cur).unwrap_or(0.));
+                    acc.push(_bezier_length(cur).unwrap_or(0.));
                 }
                 acc
             });
@@ -189,7 +188,7 @@ fn compute_track(control_points: &[Vec2<f64>]) -> Vec<Vec2<f64>> {
             };
             // println!("[{}, {}, {}],", seg_idx, frem, cum_len + frem);
             let seg_len = segment_lengths[seg_idx];
-            spline_interp(
+            _bezier_interp(
                 &control_points[seg_idx * 2..seg_idx * 2 + 3],
                 frem / seg_len,
             )
