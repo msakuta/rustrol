@@ -5,10 +5,8 @@ use eframe::{
 };
 
 use crate::{
-    models::{
-        bicycle::path_utils::PathSegment,
-        train::{Station, Train},
-    },
+    models::train::{Station, Train},
+    path_utils::PathSegment,
     transform::{half_rect, Transform},
     vec2::Vec2,
 };

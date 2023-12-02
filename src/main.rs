@@ -10,6 +10,7 @@ mod models {
 }
 mod interpolation;
 mod ops;
+mod path_utils;
 mod transform;
 mod vec2;
 mod xor128;

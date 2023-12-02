@@ -1,8 +1,9 @@
-use crate::vec2::Vec2;
-
-use super::bicycle::{
-    interpolate_path, interpolate_path_heading,
-    path_utils::{wrap_angle, CircleArc, PathSegment, _bezier_interp, _bezier_length},
+use crate::{
+    path_utils::{
+        interpolate_path, interpolate_path_heading, wrap_angle, CircleArc, PathSegment,
+        _bezier_interp, _bezier_length,
+    },
+    vec2::Vec2,
 };
 
 const CAR_LENGTH: f64 = 1.;
