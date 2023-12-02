@@ -13,14 +13,24 @@ use crate::{
 
 use super::SCALE;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ClickMode {
+    None,
+    GentleCurve,
+    TightCurve,
+    StraightLine,
+}
+
 pub struct TrainApp {
     transform: Transform,
     paused: bool,
     follow_train: bool,
     show_rail_ties: bool,
     show_track_nodes: bool,
+    click_mode: ClickMode,
     train: Train,
     new_station: String,
+    error_msg: Option<(String, f64)>,
 }
 
 impl TrainApp {
@@ -31,12 +41,23 @@ impl TrainApp {
             follow_train: true,
             show_rail_ties: true,
             show_track_nodes: false,
+            click_mode: ClickMode::None,
             train: Train::new(),
             new_station: "New Station".to_string(),
+            error_msg: None,
         }
     }
 
     pub fn update(&mut self, ctx: &Context) {
+        // Decay error message even if paused
+        if let Some((_, ref mut time)) = self.error_msg {
+            let dt = ctx.input(|i| i.raw.predicted_dt);
+            *time = *time - dt as f64;
+            if *time < 0. {
+                self.error_msg = None;
+            }
+        }
+
         if self.paused {
             return;
         }
@@ -59,6 +80,18 @@ impl TrainApp {
         ui.checkbox(&mut self.show_rail_ties, "Show rail ties");
         ui.checkbox(&mut self.show_track_nodes, "Show track nodes");
         ui.group(|ui| {
+            ui.label("Click mode:");
+            ui.radio_value(&mut self.click_mode, ClickMode::None, "None");
+            ui.radio_value(&mut self.click_mode, ClickMode::GentleCurve, "Gentle Curve");
+            ui.radio_value(&mut self.click_mode, ClickMode::TightCurve, "Tight Curve");
+            ui.radio_value(
+                &mut self.click_mode,
+                ClickMode::StraightLine,
+                "Straight Line",
+            );
+        });
+        ui.group(|ui| {
+            ui.label("Station destination:");
             for (i, station) in self.train.stations.iter().enumerate() {
                 ui.radio_value(&mut self.train.target_station, Some(i), &station.name);
             }
@@ -92,11 +125,29 @@ impl TrainApp {
 
             if response.clicked() {
                 if let Some(pointer) = response.interact_pointer_pos() {
-                    let pos = paint_transform.from_pos2(pointer);
-                    // self.train.control_points.push(pos);
-                    self.train.add_point(pos);
-                    self.train.recompute_track();
-                    println!("Added point {pos:?}");
+                    match self.click_mode {
+                        ClickMode::None => {}
+                        ClickMode::GentleCurve => {
+                            let pos = paint_transform.from_pos2(pointer);
+                            // self.train.control_points.push(pos);
+                            self.train.add_point(pos);
+                            self.train.recompute_track();
+                            println!("Added point {pos:?}");
+                        }
+                        ClickMode::TightCurve => {
+                            self.error_msg =
+                                Some(("Tight curve not supported yet".to_string(), 10.));
+                        }
+                        ClickMode::StraightLine => {
+                            let pos = paint_transform.from_pos2(pointer);
+                            if let Err(e) = self.train.add_straight(pos) {
+                                self.error_msg = Some((e, 10.));
+                            } else {
+                                self.train.recompute_track();
+                                println!("Added point {pos:?}");
+                            }
+                        }
+                    }
                 }
             }
 
@@ -326,6 +377,16 @@ impl TrainApp {
                 {
                     paint_train(&train_pos, train_heading);
                 }
+            }
+
+            if let Some((ref err, _)) = self.error_msg {
+                painter.text(
+                    response.rect.center(),
+                    Align2::CENTER_CENTER,
+                    err,
+                    FontId::default(),
+                    Color32::RED,
+                );
             }
         });
     }

@@ -149,6 +149,26 @@ impl Train {
             end,
         )))
     }
+
+    pub fn add_straight(&mut self, pos: Vec2<f64>) -> Result<(), String> {
+        let Some(prev) = self.path_segments.last() else {
+            return Err("Path needs at least one segment to connect to".to_string());
+        };
+        let prev_pos = prev.end();
+        let prev_angle = prev.end_angle();
+        let delta = pos - prev_pos;
+        let tangent = Vec2::new(prev_angle.cos(), prev_angle.sin());
+        let dot = tangent.dot(delta);
+        if dot < 0. {
+            return Err(
+                "Straight line cannot connect behind the current track direction".to_string(),
+            );
+        }
+        let perpendicular_foot = prev_pos + tangent * dot;
+        self.path_segments
+            .push(PathSegment::Line([prev_pos, perpendicular_foot]));
+        Ok(())
+    }
 }
 
 fn _compute_track(control_points: &[Vec2<f64>]) -> Vec<Vec2<f64>> {
