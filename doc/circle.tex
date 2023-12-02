@@ -13,6 +13,11 @@ We want to connect rail tracks with continuous curves, but Bezier curves and B-s
 It is problematic for us because we are using the distance to interpolate nodes in a constant interval, and also predict the distance to decelerate.
 So we consider using arcs, which are sections of circles that have a constant curveture over its span.
 
+\section{Gentle curve}
+
+First, we consider the case that we want to have an arc with minimal curvature (maximum curvature radius).
+It will allow the fastest speed for the train, but it requires the curved rail for longer span.
+
 \begin{figure}
 \centering
 \begin{tikzpicture}
@@ -22,7 +27,7 @@ So we consider using arcs, which are sections of circles that have a constant cu
     \coordinate [label=right:\textcolor{blue}{$C$}] (C) at (3/2,-4/2);
     \coordinate (D) at ($(B) + (B) - (O)$);
     \node [fill=red,inner sep=1pt,label=below:$X$] (X) at ($ (B)!.5!(C) $) {};
-  
+
     \draw (A) let
       \p1 = ($ (B) - (A) $)
     in
@@ -79,6 +84,81 @@ $$
 
 With some simple geometry, we observe that $\theta=\frac{\phi}{2}$.
 
-With all these information, you can determine the arc.
+This gives all the information you need to determine the arc.
+
+\section{Tight curve}
+
+Another case is that we want to have the most tight curve possible (within allowed curvature).
+It may not be optimal for the train speed, but it allows longer span of straight sections.
+It is easier to design the path with longer straight line sections.
+
+\begin{figure}
+  \centering
+  \begin{tikzpicture}
+      \coordinate (O) at (-3/2-4/2*3/2,0);
+      \coordinate [label=above:\textcolor{blue}{$A$}] (A) at (0,0);
+      \coordinate [label=below:\textcolor{blue}{$B$}] (B) at (-3/2,-4/2);
+      \coordinate [label=below:\textcolor{blue}{$C$}] (C) at (3/2,-4/2);
+      \coordinate [label=above:\textcolor{blue}{$C'$}] (C') at (3/2,4/2);
+      \coordinate (Bb) at ($(B) + (B) - (O)$);
+      \path let
+        \p1 = (O)
+      in
+        coordinate [label=right:{$D$}] (D) at (-{\x1},-{\y1});
+      \node [fill=red,inner sep=1pt,label=below:$X$] (X) at ($ (B)!.5!(C) $) {};
+
+      \draw (A) let
+        \p1 = ($ (B) - (A) $)
+      in
+        circle ({veclen(\x1,\y1)});
+
+      \draw[line width=2pt, -{Latex[length=3mm]}, red] (O) -- (B);
+
+      \draw[line width=2pt, -{Latex[length=3mm]}, red] (B) let
+          \p1 = ($ (B) - (A) $),
+          \p2 = ($ (C) - (A) $),
+          \n1 = {veclen(\x1,\y1)},
+          \n2 = {atan2(\y1,\x1)},
+          \n3 = {atan2(\y2,\x2)}
+      in
+          arc [start angle=\n2, end angle=\n3, radius=\n1];
+
+      \draw[line width=2pt, -{Latex[length=3mm]}, red] (C) -- (D);
+
+      \draw[blue] (C) -- (B) -- (A) pic[draw=blue, angle eccentricity=1.2, angle radius=0.5cm, "$\phi$"] {angle=Bb--B--C};
+      \draw[blue] (A) -- (C) pic[draw=blue, angle eccentricity=1.2, angle radius=0.5cm, "$\theta$"] {angle=B--A--C};
+      \draw[blue,dashed] (A) -- (X);
+      \draw[blue,dashed] (B) -- (Bb);
+      \draw[blue,dashed] (D) -- (C');
+      \draw[blue,dashed] (A) -- (D);
+      \draw[blue] pic[draw=blue, angle eccentricity=1.2, angle radius=0.75cm, "$\beta$"] {angle=C--A--D};
+      \draw[blue] (A) -- (C');
+
+      \draw (A).. controls ($(A)!.2!(B)!10pt!-90:(B)$) and ($(A)!.8!(B)!10pt!-90:(B)$) .. (B) node [midway, sloped, fill=white] {$R$};
+      \draw (B).. controls ($(B)!.2!(C)!10pt!90:(C)$) and ($(B)!.8!(C)!10pt!90:(C)$) .. (C) node [pos=0.4, fill=white] {$L$};
+\end{tikzpicture}
+\caption{The arc section and smooth connection from incoming path and another following straight section.}
+\label{fig:arc2}
+\end{figure}
+
+In this setup, the set of given variables are different from the previous section.
+In particular, $R$ and $D$ are given.
+In Figure \ref{fig:arc2}, $D$ is the point the user has clicked and $\beta$ is the angle at $A$ between $D$ and the point the arc ends ($C$).
+$C$ is now an unknown position, but it is a tangent of a line from $D$, so $\angle ACD$ should be 90 degrees.
+
+You may notice that there are 2 tangent lines on the circle $A$ that pass through $D$.
+We name them $C$ and $C'$ in the figure, but which one should we choose?
+We pick the one with the least distance from the start of the arc ($B$), in terms of angle from $A$.
+Be aware that the direction that we measure the angle difference has the order.
+So if the path is turning left, the angle should be measured in counterclockwise direction, and if it's right, it should be clockwise.
+
+Let's assume we picked $C$ as the shortest tangent point.
+We observe that
+$$
+\beta = \arccos{\frac{R}{||\vec{AD}||}}
+$$
+which can be calculated by the known variables.
+
+Now you can determine the arc.
 
 \end{document}
