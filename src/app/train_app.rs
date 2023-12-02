@@ -5,7 +5,10 @@ use eframe::{
 };
 
 use crate::{
-    models::train::{Station, Train},
+    models::{
+        bicycle::path_utils::PathSegment,
+        train::{Station, Train},
+    },
     transform::{half_rect, Transform},
     vec2::Vec2,
 };
@@ -93,6 +96,7 @@ impl TrainApp {
                 if let Some(pointer) = response.interact_pointer_pos() {
                     let pos = paint_transform.from_pos2(pointer);
                     // self.train.control_points.push(pos);
+                    self.train.add_point(pos);
                     self.train.recompute_track();
                     println!("Added point {pos:?}");
                 }
@@ -161,6 +165,16 @@ impl TrainApp {
 
             let c_points_line = PathShape::line(c_points, (1., Color32::from_rgb(127, 0, 127)));
             painter.add(c_points_line);
+
+            for seg in &self.train.path_segments {
+                if let PathSegment::Arc(arc) = seg {
+                    painter.circle_stroke(
+                        paint_transform.to_pos2(arc.center),
+                        arc.radius as f32 * self.transform.scale(),
+                        (1., Color32::from_rgb(127, 0, 127)),
+                    );
+                }
+            }
 
             if 1. < self.transform.scale() {
                 let parallel_offset = |ofs| {

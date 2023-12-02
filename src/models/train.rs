@@ -2,7 +2,7 @@ use crate::vec2::Vec2;
 
 use super::bicycle::{
     interpolate_path, interpolate_path_heading,
-    path_utils::{CircleArc, PathSegment},
+    path_utils::{wrap_angle, CircleArc, PathSegment},
     spline_interp, spline_length,
 };
 
@@ -127,6 +127,27 @@ impl Train {
             self.speed = 0.;
         }
         self.s = (self.s + self.speed).clamp(0., self.track.len() as f64);
+    }
+
+    pub fn add_point(&mut self, pos: Vec2<f64>) {
+        let Some(prev) = self.path_segments.last() else {
+            return;
+        };
+        let prev_pos = prev.end();
+        let prev_angle = prev.end_angle();
+        let delta = pos - prev_pos;
+        let normal = Vec2::new(-prev_angle.sin(), prev_angle.cos());
+        let angle = delta.y.atan2(delta.x);
+        let phi = wrap_angle(angle - prev_angle);
+        let radius = delta.length() / 2. / phi.sin();
+        let start = wrap_angle(prev_angle - radius.signum() * std::f64::consts::PI * 0.5);
+        let end = start + phi * 2.;
+        self.path_segments.push(PathSegment::Arc(CircleArc::new(
+            prev_pos + normal * radius,
+            radius.abs(),
+            start,
+            end,
+        )))
     }
 }
 

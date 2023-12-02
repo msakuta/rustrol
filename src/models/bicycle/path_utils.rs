@@ -179,11 +179,24 @@ impl PathSegment {
         }
     }
 
+    /// Tangent angle
+    pub(crate) fn end_angle(&self) -> f64 {
+        match self {
+            Self::Line(pts) => {
+                let delta = pts[1] - pts[0];
+                delta.y.atan2(delta.x)
+            }
+            Self::Arc(arc) => {
+                wrap_angle(arc.end + (arc.end - arc.start).signum() * std::f64::consts::PI * 0.5)
+            }
+        }
+    }
+
     /// Compute the total length. Unlike Bezier curve, it returns exact length.
     pub(crate) fn length(&self) -> f64 {
         match self {
             Self::Line(pts) => (pts[0] - pts[1]).length(),
-            Self::Arc(arc) => arc.radius * (arc.end - arc.start),
+            Self::Arc(arc) => arc.radius * (arc.end - arc.start).abs(),
         }
     }
 
@@ -198,4 +211,11 @@ impl PathSegment {
             }
         }
     }
+}
+
+pub(crate) fn wrap_angle(x: f64) -> f64 {
+    use std::f64::consts::PI;
+    const TWOPI: f64 = PI * 2.;
+    // ((x + PI) - ((x + PI) / TWOPI).floor() * TWOPI) - PI
+    x - (x + PI).div_euclid(TWOPI) * TWOPI
 }
