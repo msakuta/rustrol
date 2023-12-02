@@ -12,6 +12,7 @@ use crate::{
 };
 
 use super::SCALE;
+const SELECT_PIXEL_RADIUS: f64 = 20.;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ClickMode {
@@ -19,6 +20,7 @@ enum ClickMode {
     GentleCurve,
     TightCurve,
     StraightLine,
+    Delete,
 }
 
 pub struct TrainApp {
@@ -92,6 +94,7 @@ impl TrainApp {
                 ClickMode::StraightLine,
                 "Straight Line",
             );
+            ui.radio_value(&mut self.click_mode, ClickMode::Delete, "Delete");
         });
         ui.group(|ui| {
             ui.label("Station destination:");
@@ -155,6 +158,16 @@ impl TrainApp {
                                 println!("Added point {pos:?}");
                             }
                         }
+                        ClickMode::Delete => {
+                            let pos = paint_transform.from_pos2(pointer);
+                            let thresh = SELECT_PIXEL_RADIUS / self.transform.scale() as f64;
+                            if let Err(e) = self.train.delete_node(pos, thresh) {
+                                self.error_msg = Some((e, 10.));
+                            } else {
+                                self.train.recompute_track();
+                                println!("Added point {pos:?}");
+                            }
+                        }
                     }
                 }
             }
@@ -212,6 +225,34 @@ impl TrainApp {
                 ]
             };
             let scale_vec = |scale: f32, vec: &[f32; 2]| [vec[0] * scale, vec[1] * scale];
+
+            if matches!(self.click_mode, ClickMode::Delete) {
+                let found_node = response.hover_pos().and_then(|pointer| {
+                    let thresh = SELECT_PIXEL_RADIUS / self.transform.scale() as f64;
+                    self.train
+                        .find_node(paint_transform.from_pos2(pointer), thresh)
+                });
+                if let Some(found_node) = found_node {
+                    let src_pos = paint_transform.to_pos2(found_node.1);
+                    painter.circle(
+                        src_pos,
+                        SELECT_PIXEL_RADIUS as f32,
+                        Color32::from_rgba_premultiplied(127, 0, 127, 63),
+                        (1., Color32::from_rgb(255, 0, 255)),
+                    );
+                }
+                for (i, seg) in self.train.path_segments.iter().enumerate() {
+                    if found_node.is_some_and(|(found, _)| found == i) {
+                        continue;
+                    }
+                    let src_pos = paint_transform.to_pos2(seg.end());
+                    painter.circle_stroke(
+                        src_pos,
+                        SELECT_PIXEL_RADIUS as f32,
+                        (0.5, Color32::from_rgb(127, 0, 127)),
+                    );
+                }
+            }
 
             if self.show_control_points {
                 let c_points = self

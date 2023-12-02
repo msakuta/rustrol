@@ -217,6 +217,42 @@ impl Train {
         }
         Ok(())
     }
+
+    pub fn delete_node(&mut self, pos: Vec2<f64>, dist_thresh: f64) -> Result<(), String> {
+        if let Some((i, _)) = self.find_node(pos, dist_thresh) {
+            if i == self.path_segments.len() - 1 {
+                self.path_segments.pop();
+            } else {
+                return Err("Only deleting the last node is supported yet".to_string());
+            }
+        } else {
+            return Err("No node is selected for deleting".to_string());
+        }
+        Ok(())
+    }
+
+    pub fn find_node(&self, pos: Vec2<f64>, dist_thresh: f64) -> Option<(usize, Vec2<f64>)> {
+        let dist2_thresh = dist_thresh.powi(2);
+        let closest_node: Option<(usize, f64)> =
+            self.path_segments
+                .iter()
+                .enumerate()
+                .fold(None, |acc, cur| {
+                    let dist2 = (cur.1.end() - pos).length2();
+                    if let Some(acc) = acc {
+                        if acc.1 < dist2 {
+                            Some(acc)
+                        } else {
+                            Some((cur.0, dist2))
+                        }
+                    } else if dist2 < dist2_thresh {
+                        Some((cur.0, dist2))
+                    } else {
+                        None
+                    }
+                });
+        closest_node.map(|(i, _)| (i, self.path_segments[i].end()))
+    }
 }
 
 fn _compute_track(control_points: &[Vec2<f64>]) -> Vec<Vec2<f64>> {
