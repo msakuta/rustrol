@@ -186,9 +186,7 @@ impl Train {
             let arc_dest = pos - arc_center;
             let arc_dest_len = arc_dest.length();
             if arc_dest_len < MIN_RADIUS {
-                return Err(
-                    "Clicked point requires tighter curvature radius than allowed".to_string(),
-                );
+                continue;
             }
             let beta = (MIN_RADIUS / arc_dest_len).acos();
             let ad_angle = arc_dest.y.atan2(arc_dest.x);
@@ -215,7 +213,7 @@ impl Train {
             self.path_segments
                 .push(PathSegment::Line([tangent_pos, pos]));
         } else {
-            return Err("Cannot happen".to_string());
+            return Err("Clicked point requires tighter curvature radius than allowed".to_string());
         }
         Ok(())
     }
