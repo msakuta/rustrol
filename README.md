@@ -122,3 +122,20 @@ and run
 trunk build --release
 ```
 
+
+## Train arc connector
+
+The train tracks are calculated with a series of line segments and arcs.
+It is a bit tricky to find the arc parameters to connect the line smoothly.
+It is probably cryptic to understand it in [the source code](src/models/train.rs).
+Compile and see [the LaTeX document](doc/circle.tex) for more detailed geometry.
+
+```
+$ pdflatex doc/circle.tex
+```
+
+
+## Where did this name come from?
+
+I asked ChatGPT to come up with a name of Rust project to demonstrate control problem algorithms.
+And it came up with this name.
