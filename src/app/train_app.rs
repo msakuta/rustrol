@@ -135,8 +135,13 @@ impl TrainApp {
                             println!("Added point {pos:?}");
                         }
                         ClickMode::TightCurve => {
-                            self.error_msg =
-                                Some(("Tight curve not supported yet".to_string(), 10.));
+                            let pos = paint_transform.from_pos2(pointer);
+                            if let Err(e) = self.train.add_tight(pos) {
+                                self.error_msg = Some((e, 10.));
+                            } else {
+                                self.train.recompute_track();
+                                println!("Added point {pos:?}");
+                            }
                         }
                         ClickMode::StraightLine => {
                             let pos = paint_transform.from_pos2(pointer);

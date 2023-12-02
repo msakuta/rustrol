@@ -214,8 +214,11 @@ impl PathSegment {
 }
 
 pub(crate) fn wrap_angle(x: f64) -> f64 {
+    wrap_angle_offset(x, std::f64::consts::PI)
+}
+
+pub(crate) fn wrap_angle_offset(x: f64, offset: f64) -> f64 {
     use std::f64::consts::PI;
     const TWOPI: f64 = PI * 2.;
-    // ((x + PI) - ((x + PI) / TWOPI).floor() * TWOPI) - PI
-    x - (x + PI).div_euclid(TWOPI) * TWOPI
+    x - (x + offset).div_euclid(TWOPI) * TWOPI
 }

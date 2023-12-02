@@ -1,7 +1,7 @@
 use crate::{
     path_utils::{
         interpolate_path, interpolate_path_heading, wrap_angle, CircleArc, PathSegment,
-        _bezier_interp, _bezier_length,
+        _bezier_interp, _bezier_length, wrap_angle_offset,
     },
     vec2::Vec2,
 };
@@ -10,7 +10,7 @@ const CAR_LENGTH: f64 = 1.;
 const TRAIN_ACCEL: f64 = 0.001;
 const MAX_SPEED: f64 = 1.;
 const THRUST_ACCEL: f64 = 0.001;
-
+const MIN_RADIUS: f64 = 50.;
 const SEGMENT_LENGTH: f64 = 10.;
 pub(crate) const _C_POINTS: [Vec2<f64>; 11] = [
     Vec2::new(0., 0.),
@@ -167,6 +167,56 @@ impl Train {
         let perpendicular_foot = prev_pos + tangent * dot;
         self.path_segments
             .push(PathSegment::Line([prev_pos, perpendicular_foot]));
+        Ok(())
+    }
+
+    pub fn add_tight(&mut self, pos: Vec2<f64>) -> Result<(), String> {
+        let Some(prev) = self.path_segments.last() else {
+            return Err("Path needs at least one segment to connect to".to_string());
+        };
+        let prev_pos = prev.end();
+        let prev_angle = prev.end_angle();
+        let tangent = Vec2::new(prev_angle.cos(), prev_angle.sin());
+        let normal_left = tangent.left90();
+        let mut tangent_angle: Option<(f64, f64, Vec2<f64>)> = None;
+        for cur in [-1., 1.] {
+            let normal = normal_left * cur;
+            let start_angle = (-normal.y).atan2(-normal.x);
+            let arc_center = normal * MIN_RADIUS + prev_pos;
+            let arc_dest = pos - arc_center;
+            let arc_dest_len = arc_dest.length();
+            if arc_dest_len < MIN_RADIUS {
+                return Err(
+                    "Clicked point requires tighter curvature radius than allowed".to_string(),
+                );
+            }
+            let beta = (MIN_RADIUS / arc_dest_len).acos();
+            let ad_angle = arc_dest.y.atan2(arc_dest.x);
+            let angle = ad_angle - cur * beta;
+            let end_angle = start_angle
+                + wrap_angle_offset(angle - start_angle, (1. - cur) * std::f64::consts::PI);
+            if let Some(acc) = tangent_angle {
+                if (start_angle - acc.0).abs() < (start_angle - end_angle).abs() {
+                } else {
+                    tangent_angle = Some((end_angle, start_angle, arc_center));
+                }
+            } else {
+                tangent_angle = Some((end_angle, start_angle, arc_center));
+            }
+        }
+        if let Some((end_angle, start_angle, a)) = tangent_angle {
+            let tangent_pos = a + Vec2::new(end_angle.cos(), end_angle.sin()) * MIN_RADIUS;
+            self.path_segments.push(PathSegment::Arc(CircleArc::new(
+                a,
+                MIN_RADIUS,
+                start_angle,
+                end_angle,
+            )));
+            self.path_segments
+                .push(PathSegment::Line([tangent_pos, pos]));
+        } else {
+            return Err("Cannot happen".to_string());
+        }
         Ok(())
     }
 }
