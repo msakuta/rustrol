@@ -27,6 +27,7 @@ pub struct TrainApp {
     follow_train: bool,
     show_rail_ties: bool,
     show_track_nodes: bool,
+    show_control_points: bool,
     click_mode: ClickMode,
     train: Train,
     new_station: String,
@@ -41,6 +42,7 @@ impl TrainApp {
             follow_train: true,
             show_rail_ties: true,
             show_track_nodes: false,
+            show_control_points: false,
             click_mode: ClickMode::None,
             train: Train::new(),
             new_station: "New Station".to_string(),
@@ -79,6 +81,7 @@ impl TrainApp {
         ui.checkbox(&mut self.follow_train, "Follow train");
         ui.checkbox(&mut self.show_rail_ties, "Show rail ties");
         ui.checkbox(&mut self.show_track_nodes, "Show track nodes");
+        ui.checkbox(&mut self.show_control_points, "Show control points");
         ui.group(|ui| {
             ui.label("Click mode:");
             ui.radio_value(&mut self.click_mode, ClickMode::None, "None");
@@ -210,23 +213,25 @@ impl TrainApp {
             };
             let scale_vec = |scale: f32, vec: &[f32; 2]| [vec[0] * scale, vec[1] * scale];
 
-            let c_points = self
-                .train
-                .control_points()
-                .iter()
-                .map(|ofs| Pos2::from(paint_transform.to_pos2(*ofs)))
-                .collect();
+            if self.show_control_points {
+                let c_points = self
+                    .train
+                    .control_points()
+                    .iter()
+                    .map(|ofs| Pos2::from(paint_transform.to_pos2(*ofs)))
+                    .collect();
 
-            let c_points_line = PathShape::line(c_points, (1., Color32::from_rgb(127, 0, 127)));
-            painter.add(c_points_line);
+                let c_points_line = PathShape::line(c_points, (1., Color32::from_rgb(127, 0, 127)));
+                painter.add(c_points_line);
 
-            for seg in &self.train.path_segments {
-                if let PathSegment::Arc(arc) = seg {
-                    painter.circle_stroke(
-                        paint_transform.to_pos2(arc.center),
-                        arc.radius as f32 * self.transform.scale(),
-                        (1., Color32::from_rgb(127, 0, 127)),
-                    );
+                for seg in &self.train.path_segments {
+                    if let PathSegment::Arc(arc) = seg {
+                        painter.circle_stroke(
+                            paint_transform.to_pos2(arc.center),
+                            arc.radius as f32 * self.transform.scale(),
+                            (1., Color32::from_rgb(127, 0, 127)),
+                        );
+                    }
                 }
             }
 
