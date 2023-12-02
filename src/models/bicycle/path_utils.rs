@@ -145,3 +145,57 @@ pub(crate) fn spline_length(c_points: &[Vec2<f64>]) -> Option<f64> {
         acc + (fpos - gpos).length()
     }))
 }
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct CircleArc {
+    pub center: Vec2<f64>,
+    pub radius: f64,
+    pub start: f64,
+    pub end: f64,
+}
+
+impl CircleArc {
+    pub const fn new(center: Vec2<f64>, radius: f64, start: f64, end: f64) -> Self {
+        Self {
+            center,
+            radius,
+            start,
+            end,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum PathSegment {
+    Line([Vec2<f64>; 2]),
+    Arc(CircleArc),
+}
+
+impl PathSegment {
+    pub(crate) fn end(&self) -> Vec2<f64> {
+        match self {
+            Self::Line(pts) => pts[1],
+            Self::Arc(arc) => arc.center + Vec2::new(arc.end.cos(), arc.end.sin()) * arc.radius,
+        }
+    }
+
+    /// Compute the total length. Unlike Bezier curve, it returns exact length.
+    pub(crate) fn length(&self) -> f64 {
+        match self {
+            Self::Line(pts) => (pts[0] - pts[1]).length(),
+            Self::Arc(arc) => arc.radius * (arc.end - arc.start),
+        }
+    }
+
+    pub(crate) fn interp(&self, s: f64) -> Vec2<f64> {
+        assert!(0. <= s && s <= 1.);
+        match self {
+            Self::Line(pts) => pts[0] * (1. - s) + pts[1] * s,
+            Self::Arc(arc) => {
+                let phase = arc.start * (1. - s) + arc.end * s;
+                let relpos = Vec2::new(phase.cos(), phase.sin()) * arc.radius;
+                arc.center + relpos
+            }
+        }
+    }
+}

@@ -92,7 +92,7 @@ impl TrainApp {
             if response.clicked() {
                 if let Some(pointer) = response.interact_pointer_pos() {
                     let pos = paint_transform.from_pos2(pointer);
-                    self.train.control_points.push(pos);
+                    // self.train.control_points.push(pos);
                     self.train.recompute_track();
                     println!("Added point {pos:?}");
                 }
@@ -154,7 +154,7 @@ impl TrainApp {
 
             let c_points = self
                 .train
-                .control_points
+                .control_points()
                 .iter()
                 .map(|ofs| Pos2::from(paint_transform.to_pos2(*ofs)))
                 .collect();

@@ -1,6 +1,10 @@
 use crate::vec2::Vec2;
 
-use super::bicycle::{interpolate_path, interpolate_path_heading, spline_interp, spline_length};
+use super::bicycle::{
+    interpolate_path, interpolate_path_heading,
+    path_utils::{CircleArc, PathSegment},
+    spline_interp, spline_length,
+};
 
 const CAR_LENGTH: f64 = 1.;
 const TRAIN_ACCEL: f64 = 0.001;
@@ -22,13 +26,26 @@ pub(crate) const C_POINTS: [Vec2<f64>; 11] = [
     Vec2::new(700., 100.),
 ];
 
+pub(crate) const PATH_SEGMENTS: [PathSegment; 4] = [
+    PathSegment::Line([Vec2::new(0., 0.), Vec2::new(50., 0.)]),
+    PathSegment::Line([Vec2::new(50., 0.), Vec2::new(200., 100.)]),
+    PathSegment::Line([Vec2::new(200., 100.), Vec2::new(250., 100.)]),
+    PathSegment::Arc(CircleArc::new(
+        Vec2::new(250., 200.),
+        100.,
+        std::f64::consts::PI * 1.5,
+        std::f64::consts::PI * 2.,
+    )),
+];
+
 pub(crate) struct Station {
     pub name: String,
     pub s: f64,
 }
 
 pub(crate) struct Train {
-    pub control_points: Vec<Vec2<f64>>,
+    // pub control_points: Vec<Vec2<f64>>,
+    pub path_segments: Vec<PathSegment>,
     /// Position along the track
     pub s: f64,
     /// Speed along s
@@ -42,10 +59,11 @@ pub(crate) struct Train {
 impl Train {
     pub fn new() -> Self {
         Self {
-            control_points: C_POINTS.to_vec(),
+            // control_points: C_POINTS.to_vec(),
+            path_segments: PATH_SEGMENTS.to_vec(),
             speed: 0.,
             s: 0.,
-            track: compute_track(&C_POINTS),
+            track: compute_track_ps(&PATH_SEGMENTS),
             stations: vec![
                 Station {
                     name: "Start".to_string(),
@@ -61,7 +79,12 @@ impl Train {
     }
 
     pub fn recompute_track(&mut self) {
-        self.track = compute_track(&self.control_points);
+        // self.track = compute_track(&self.control_points);
+        self.track = compute_track_ps(&self.path_segments);
+    }
+
+    pub fn control_points(&self) -> Vec<Vec2<f64>> {
+        self.path_segments.iter().map(|seg| seg.end()).collect()
     }
 
     pub fn s_pos(&self, s: f64) -> Option<Vec2<f64>> {
@@ -150,6 +173,41 @@ fn compute_track(control_points: &[Vec2<f64>]) -> Vec<Vec2<f64>> {
                 frem / seg_len,
             )
             .unwrap()
+        })
+        .collect()
+}
+
+fn compute_track_ps(path_segments: &[PathSegment]) -> Vec<Vec2<f64>> {
+    let segment_lengths: Vec<_> = path_segments.iter().map(|seg| seg.length()).collect();
+    let cumulative_lengths: Vec<f64> = segment_lengths.iter().fold(vec![], |mut acc, cur| {
+        if let Some(v) = acc.last() {
+            acc.push(v + *cur);
+        } else {
+            acc.push(*cur);
+        }
+        acc
+    });
+    let total_length = *cumulative_lengths.last().unwrap();
+    let num_nodes = (total_length / SEGMENT_LENGTH) as usize + 1;
+    println!("cumulative_lengths: {cumulative_lengths:?}, total_length: {total_length}");
+    (0..=num_nodes)
+        .map(|i| {
+            let fidx = i as f64 * SEGMENT_LENGTH;
+            let seg_idx = cumulative_lengths
+                .iter()
+                .enumerate()
+                .find(|(_i, l)| fidx < **l)
+                .map(|(i, _)| i)
+                .unwrap_or_else(|| cumulative_lengths.len() - 1);
+            let (frem, _cum_len) = if seg_idx == 0 {
+                (fidx, 0.)
+            } else {
+                let cum_len = cumulative_lengths[seg_idx - 1];
+                (fidx - cum_len, cum_len)
+            };
+            // println!("[{i}, {}, {}, {}],", seg_idx, frem, _cum_len + frem);
+            let seg_len = segment_lengths[seg_idx];
+            path_segments[seg_idx].interp((frem / seg_len).clamp(0., 1.))
         })
         .collect()
 }

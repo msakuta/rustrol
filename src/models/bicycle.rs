@@ -1,6 +1,6 @@
 mod avoidance;
 mod navigation;
-mod path_utils;
+pub mod path_utils;
 
 use std::{collections::VecDeque, error::Error};
 
