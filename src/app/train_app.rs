@@ -16,6 +16,7 @@ pub struct TrainApp {
     transform: Transform,
     paused: bool,
     follow_train: bool,
+    show_rail_ties: bool,
     show_track_nodes: bool,
     train: Train,
     new_station: String,
@@ -27,6 +28,7 @@ impl TrainApp {
             transform: Transform::new(SCALE),
             paused: false,
             follow_train: true,
+            show_rail_ties: true,
             show_track_nodes: false,
             train: Train::new(),
             new_station: "New Station".to_string(),
@@ -53,6 +55,7 @@ impl TrainApp {
     pub fn update_panel(&mut self, ui: &mut Ui) {
         ui.checkbox(&mut self.paused, "Paused");
         ui.checkbox(&mut self.follow_train, "Follow train");
+        ui.checkbox(&mut self.show_rail_ties, "Show rail ties");
         ui.checkbox(&mut self.show_track_nodes, "Show track nodes");
         ui.group(|ui| {
             for (i, station) in self.train.stations.iter().enumerate() {
@@ -168,17 +171,46 @@ impl TrainApp {
                     }
                 };
 
-                for ofs in [1.25, -1.25] {
-                    let left_rail_points = self
-                        .train
-                        .track
+                const RAIL_HALFWIDTH: f64 = 1.25;
+                const TIE_HALFLENGTH: f64 = 1.5;
+                const TIE_HALFWIDTH: f64 = 0.3;
+                const TIE_INTERPOLATES: usize = 3;
+
+                let track = &self.train.track;
+
+                for ofs in [RAIL_HALFWIDTH, -RAIL_HALFWIDTH] {
+                    let left_rail_points = track
                         .iter()
-                        .zip(self.train.track.iter().skip(1))
+                        .zip(track.iter().skip(1))
                         .map(parallel_offset(ofs))
                         .collect();
                     let left_rail =
                         PathShape::line(left_rail_points, (1., Color32::from_rgb(255, 0, 255)));
                     painter.add(left_rail);
+                }
+
+                if self.show_rail_ties {
+                    for (prev, next) in track.iter().zip(track.iter().skip(1)) {
+                        let delta = *next - *prev;
+                        let tangent = delta.normalized();
+                        for i in 0..TIE_INTERPOLATES {
+                            let offset = *prev + delta * i as f64 / TIE_INTERPOLATES as f64;
+                            let left = tangent.left90() * TIE_HALFLENGTH + offset;
+                            let right = tangent.left90() * -TIE_HALFLENGTH + offset;
+                            let left_front = left + tangent * TIE_HALFWIDTH;
+                            let left_back = left + tangent * -TIE_HALFWIDTH;
+                            let right_front = right + tangent * TIE_HALFWIDTH;
+                            let right_back = right + tangent * -TIE_HALFWIDTH;
+                            let tie = PathShape::closed_line(
+                                [left_front, right_front, right_back, left_back]
+                                    .into_iter()
+                                    .map(|v| paint_transform.to_pos2(v))
+                                    .collect(),
+                                (1., Color32::from_rgb(255, 0, 255)),
+                            );
+                            painter.add(tie);
+                        }
+                    }
                 }
             } else {
                 let track_points: Vec<_> = self
