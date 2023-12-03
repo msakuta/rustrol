@@ -5,7 +5,7 @@ use eframe::{
 };
 
 use crate::{
-    models::train::{Station, Train},
+    models::train::{Station, Train, TrainTask},
     path_utils::PathSegment,
     transform::{half_rect, Transform},
     vec2::Vec2,
@@ -32,6 +32,7 @@ pub struct TrainApp {
     show_control_points: bool,
     click_mode: ClickMode,
     train: Train,
+    selected_station: Option<usize>,
     new_station: String,
     error_msg: Option<(String, f64)>,
 }
@@ -47,6 +48,7 @@ impl TrainApp {
             show_control_points: false,
             click_mode: ClickMode::None,
             train: Train::new(),
+            selected_station: None,
             new_station: "New Station".to_string(),
             error_msg: None,
         }
@@ -97,9 +99,14 @@ impl TrainApp {
             ui.radio_value(&mut self.click_mode, ClickMode::Delete, "Delete");
         });
         ui.group(|ui| {
-            ui.label("Station destination:");
+            ui.label("Stations:");
             for (i, station) in self.train.stations.iter().enumerate() {
-                ui.radio_value(&mut self.train.target_station, Some(i), &station.name);
+                ui.radio_value(&mut self.selected_station, Some(i), &station.name);
+            }
+            if ui.button("Schedule station").clicked() {
+                if let Some(target) = self.selected_station {
+                    self.train.schedule.push(target);
+                }
             }
             ui.text_edit_singleline(&mut self.new_station);
             if ui.button("Add station").clicked() {
@@ -107,6 +114,17 @@ impl TrainApp {
                     name: std::mem::take(&mut self.new_station),
                     s: self.train.track.len() as f64 - 10.,
                 })
+            }
+        });
+        ui.group(|ui| {
+            ui.label("Station schedule:");
+            for (_i, station) in self.train.schedule.iter().enumerate() {
+                if let Some(station) = self.train.stations.get(*station) {
+                    ui.label(&station.name);
+                }
+            }
+            if ui.button("Remove station schedule").clicked() {
+                self.train.schedule.pop();
             }
         });
     }
@@ -385,7 +403,7 @@ impl TrainApp {
             };
 
             for (i, station) in self.train.stations.iter().enumerate() {
-                render_station(station, self.train.target_station == Some(i));
+                render_station(station, self.train.train_task == TrainTask::Goto(i));
             }
 
             let paint_train = |pos: &Vec2<f64>, heading: f64| {

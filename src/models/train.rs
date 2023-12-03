@@ -28,10 +28,10 @@ pub(crate) const _C_POINTS: [Vec2<f64>; 11] = [
 
 pub(crate) const PATH_SEGMENTS: [PathSegment; 4] = [
     PathSegment::Line([Vec2::new(0., 0.), Vec2::new(50., 0.)]),
-    PathSegment::Line([Vec2::new(50., 0.), Vec2::new(200., 100.)]),
-    PathSegment::Line([Vec2::new(200., 100.), Vec2::new(250., 100.)]),
+    PathSegment::Line([Vec2::new(50., 0.), Vec2::new(500., 200.)]),
+    PathSegment::Line([Vec2::new(500., 200.), Vec2::new(550., 200.)]),
     PathSegment::Arc(CircleArc::new(
-        Vec2::new(250., 200.),
+        Vec2::new(550., 300.),
         100.,
         std::f64::consts::PI * 1.5,
         std::f64::consts::PI * 2.,
@@ -41,6 +41,13 @@ pub(crate) const PATH_SEGMENTS: [PathSegment; 4] = [
 pub(crate) struct Station {
     pub name: String,
     pub s: f64,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TrainTask {
+    Idle,
+    Goto(usize),
+    Wait(usize),
 }
 
 pub(crate) struct Train {
@@ -53,7 +60,8 @@ pub(crate) struct Train {
     /// Interpolated points along the track in the interval SEGMENT_LENGTH
     pub track: Vec<Vec2<f64>>,
     pub stations: Vec<Station>,
-    pub target_station: Option<usize>,
+    pub train_task: TrainTask,
+    pub schedule: Vec<usize>,
 }
 
 impl Train {
@@ -74,7 +82,8 @@ impl Train {
                     s: 70.,
                 },
             ],
-            target_station: None,
+            train_task: TrainTask::Idle,
+            schedule: vec![],
         }
     }
 
@@ -100,9 +109,25 @@ impl Train {
     }
 
     pub fn update(&mut self, thrust: f64) {
-        if let Some(target) = self.target_station {
+        if let TrainTask::Wait(timer) = &mut self.train_task {
+            *timer -= 1;
+            if *timer <= 1 {
+                self.train_task = TrainTask::Idle;
+            }
+        }
+        if matches!(self.train_task, TrainTask::Idle) {
+            if let Some(first) = self.schedule.first().copied() {
+                self.train_task = TrainTask::Goto(first);
+                self.schedule.remove(0);
+                self.schedule.push(first);
+            }
+        }
+        if let TrainTask::Goto(target) = self.train_task {
             let target_s = self.stations[target].s;
-            if target_s < self.s {
+            if (target_s - self.s).abs() < 1. && self.speed.abs() < TRAIN_ACCEL {
+                self.speed = 0.;
+                self.train_task = TrainTask::Wait(120);
+            } else if target_s < self.s {
                 // speed / accel == t
                 // speed * t / 2 == speed^2 / accel / 2 == dist
                 // accel = sqrt(2 * dist)
