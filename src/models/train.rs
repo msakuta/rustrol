@@ -157,8 +157,8 @@ impl Train {
         self.s = (self.s + self.speed).clamp(0., self.track.len() as f64);
     }
 
-    pub fn add_point(&mut self, pos: Vec2<f64>) -> Result<(), String> {
-        match self.compute_point(pos) {
+    pub fn add_gentle(&mut self, pos: Vec2<f64>) -> Result<(), String> {
+        match self.compute_gentle(pos) {
             Ok((path_segment, _)) => self.path_segments.push(path_segment),
             Err(e) => {
                 self.ghost_segment = None;
@@ -168,14 +168,14 @@ impl Train {
         Ok(())
     }
 
-    pub fn ghost_point(&mut self, pos: Vec2<f64>) {
+    pub fn ghost_gentle(&mut self, pos: Vec2<f64>) {
         self.ghost_segment = self
-            .compute_point(pos)
+            .compute_gentle(pos)
             .ok()
             .map(|(path_segment, track)| (vec![path_segment], track));
     }
 
-    fn compute_point(&self, pos: Vec2<f64>) -> Result<(PathSegment, Vec<Vec2<f64>>), String> {
+    fn compute_gentle(&self, pos: Vec2<f64>) -> Result<(PathSegment, Vec<Vec2<f64>>), String> {
         let Some(prev) = self.path_segments.last() else {
             return Err("Path needs at least one segment to connect to".to_string());
         };
@@ -186,6 +186,9 @@ impl Train {
         let angle = delta.y.atan2(delta.x);
         let phi = wrap_angle(angle - prev_angle);
         let radius = delta.length() / 2. / phi.sin();
+        if radius < MIN_RADIUS {
+            return Err("Clicked point requires tighter curvature radius than allowed".to_string());
+        }
         let start = wrap_angle(prev_angle - radius.signum() * std::f64::consts::PI * 0.5);
         let end = start + phi * 2.;
         let path_segment = PathSegment::Arc(CircleArc::new(

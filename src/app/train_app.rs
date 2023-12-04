@@ -163,7 +163,7 @@ impl TrainApp {
                         ClickMode::GentleCurve => {
                             let pos = paint_transform.from_pos2(pointer);
                             // self.train.control_points.push(pos);
-                            let res = self.train.add_point(pos);
+                            let res = self.train.add_gentle(pos);
                             self.process_result(pos, res);
                         }
                         ClickMode::TightCurve => {
@@ -244,7 +244,7 @@ impl TrainApp {
                 ClickMode::None => self.train.ghost_segment = None,
                 ClickMode::GentleCurve => {
                     if let Some(pos) = response.hover_pos() {
-                        self.train.ghost_point(paint_transform.from_pos2(pos));
+                        self.train.ghost_gentle(paint_transform.from_pos2(pos));
                     } else {
                         self.train.ghost_segment = None;
                     }
