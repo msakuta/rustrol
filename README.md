@@ -25,6 +25,7 @@ There are following models:
 * Orbital Mechanics
 * Three-body problem
 * Kinematic Bicycle Model
+* Train Tracks
 
 ### Lunar Lander
 
@@ -91,6 +92,15 @@ In the animation below:
 * and the green line is the actual trajectory followed.
 
 ![screencapture_bicycle](images/screencapture_bicycle.gif)
+
+
+### Train Tracks
+
+It is a simulation of a train on a rail track.
+It demonstrates the algorithm to connect straight lines and arcs to make a rail section and run the train on it.
+It doesn't actually use any autograd (yet).
+
+![train screenshot](images/screenshot-train.png)
 
 
 ## Control
