@@ -112,7 +112,7 @@ impl TrainApp {
             if ui.button("Add station").clicked() {
                 self.train.stations.push(Station {
                     name: std::mem::take(&mut self.new_station),
-                    s: self.train.track.len() as f64 - 10.,
+                    s: self.train.path_bundle.track.len() as f64 - 10.,
                 })
             }
         });
@@ -133,7 +133,7 @@ impl TrainApp {
         if let Err(e) = res {
             self.error_msg = Some((e, 10.));
         } else {
-            self.train.recompute_track();
+            self.train.path_bundle.recompute_track();
             println!("Added point {pos:?}");
         }
     }
@@ -241,32 +241,33 @@ impl TrainApp {
             let scale_vec = |scale: f32, vec: &[f32; 2]| [vec[0] * scale, vec[1] * scale];
 
             match self.click_mode {
-                ClickMode::None => self.train.ghost_segment = None,
+                ClickMode::None => self.train.ghost_path = None,
                 ClickMode::GentleCurve => {
                     if let Some(pos) = response.hover_pos() {
                         self.train.ghost_gentle(paint_transform.from_pos2(pos));
                     } else {
-                        self.train.ghost_segment = None;
+                        self.train.ghost_path = None;
                     }
                 }
                 ClickMode::StraightLine => {
                     if let Some(pos) = response.hover_pos() {
                         self.train.ghost_straight(paint_transform.from_pos2(pos));
                     } else {
-                        self.train.ghost_segment = None;
+                        self.train.ghost_path = None;
                     }
                 }
                 ClickMode::TightCurve => {
                     if let Some(pos) = response.hover_pos() {
                         self.train.ghost_tight(paint_transform.from_pos2(pos));
                     } else {
-                        self.train.ghost_segment = None;
+                        self.train.ghost_path = None;
                     }
                 }
                 ClickMode::Delete => {
                     let found_node = response.hover_pos().and_then(|pointer| {
                         let thresh = SELECT_PIXEL_RADIUS / self.transform.scale() as f64;
                         self.train
+                            .path_bundle
                             .find_node(paint_transform.from_pos2(pointer), thresh)
                     });
                     if let Some(found_node) = found_node {
@@ -278,7 +279,7 @@ impl TrainApp {
                             (1., Color32::from_rgb(255, 0, 255)),
                         );
                     }
-                    for (i, seg) in self.train.path_segments.iter().enumerate() {
+                    for (i, seg) in self.train.path_bundle.segments().enumerate() {
                         if found_node.is_some_and(|(found, _)| found == i) {
                             continue;
                         }
@@ -303,7 +304,7 @@ impl TrainApp {
                 let c_points_line = PathShape::line(c_points, (1., Color32::from_rgb(127, 0, 127)));
                 painter.add(c_points_line);
 
-                for seg in &self.train.path_segments {
+                for seg in self.train.path_bundle.segments() {
                     if let PathSegment::Arc(arc) = seg {
                         painter.circle_stroke(
                             paint_transform.to_pos2(arc.center),
@@ -315,15 +316,25 @@ impl TrainApp {
             }
 
             if 1. < self.transform.scale() {
-                if let Some((_, track)) = &self.train.ghost_segment {
-                    self.render_track_detail(track, &painter, &paint_transform, 63);
+                if let Some(ghost_segments) = &self.train.ghost_path {
+                    self.render_track_detail(&ghost_segments.track, &painter, &paint_transform, 63);
                 }
-                self.render_track_detail(&self.train.track, &painter, &paint_transform, 255);
+                self.render_track_detail(
+                    &self.train.path_bundle.track,
+                    &painter,
+                    &paint_transform,
+                    255,
+                );
             } else {
-                if let Some((_, track)) = &self.train.ghost_segment {
-                    self.render_track(track, &painter, &paint_transform, 63);
+                if let Some(ghost_segments) = &self.train.ghost_path {
+                    self.render_track(&ghost_segments.track, &painter, &paint_transform, 63);
                 }
-                self.render_track(&self.train.track, &painter, &paint_transform, 255);
+                self.render_track(
+                    &self.train.path_bundle.track,
+                    &painter,
+                    &paint_transform,
+                    255,
+                );
             }
 
             const STATION_HEIGHT: f64 = 2.;

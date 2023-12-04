@@ -1,10 +1,14 @@
+mod path_bundle;
+
 use crate::{
     path_utils::{
-        interpolate_path, interpolate_path_heading, wrap_angle, CircleArc, PathSegment,
-        _bezier_interp, _bezier_length, wrap_angle_offset,
+        interpolate_path, interpolate_path_heading, wrap_angle, wrap_angle_offset, CircleArc,
+        PathSegment,
     },
     vec2::Vec2,
 };
+
+pub(crate) use path_bundle::PathBundle;
 
 const CAR_LENGTH: f64 = 1.;
 const TRAIN_ACCEL: f64 = 0.001;
@@ -52,15 +56,13 @@ pub(crate) enum TrainTask {
 
 pub(crate) struct Train {
     // pub control_points: Vec<Vec2<f64>>,
-    pub path_segments: Vec<PathSegment>,
+    pub path_bundle: PathBundle,
     /// Build ghost segment, which is not actually built yet
-    pub ghost_segment: Option<(Vec<PathSegment>, Vec<Vec2<f64>>)>,
+    pub ghost_path: Option<PathBundle>,
     /// Position along the track
     pub s: f64,
     /// Speed along s
     pub speed: f64,
-    /// Interpolated points along the track in the interval SEGMENT_LENGTH
-    pub track: Vec<Vec2<f64>>,
     pub stations: Vec<Station>,
     pub train_task: TrainTask,
     pub schedule: Vec<usize>,
@@ -70,11 +72,10 @@ impl Train {
     pub fn new() -> Self {
         Self {
             // control_points: C_POINTS.to_vec(),
-            path_segments: PATH_SEGMENTS.to_vec(),
-            ghost_segment: None,
+            path_bundle: PathBundle::multi(PATH_SEGMENTS.to_vec()),
+            ghost_path: None,
             speed: 0.,
             s: 0.,
-            track: compute_track_ps(&PATH_SEGMENTS),
             stations: vec![
                 Station {
                     name: "Start".to_string(),
@@ -90,25 +91,30 @@ impl Train {
         }
     }
 
-    pub fn recompute_track(&mut self) {
-        // self.track = compute_track(&self.control_points);
-        self.track = compute_track_ps(&self.path_segments);
-    }
-
     pub fn control_points(&self) -> Vec<Vec2<f64>> {
-        self.path_segments.iter().map(|seg| seg.end()).collect()
+        self.path_bundle
+            .segments
+            .iter()
+            .map(|seg| seg.end())
+            .collect()
     }
 
     pub fn s_pos(&self, s: f64) -> Option<Vec2<f64>> {
-        interpolate_path(&self.track, s)
+        interpolate_path(&self.path_bundle.track, s)
     }
 
     pub fn train_pos(&self, car_idx: usize) -> Option<Vec2<f64>> {
-        interpolate_path(&self.track, self.s - car_idx as f64 * CAR_LENGTH)
+        interpolate_path(
+            &self.path_bundle.track,
+            self.s - car_idx as f64 * CAR_LENGTH,
+        )
     }
 
     pub fn heading(&self, car_idx: usize) -> Option<f64> {
-        interpolate_path_heading(&self.track, self.s - car_idx as f64 * CAR_LENGTH)
+        interpolate_path_heading(
+            &self.path_bundle.track,
+            self.s - car_idx as f64 * CAR_LENGTH,
+        )
     }
 
     pub fn update(&mut self, thrust: f64) {
@@ -151,17 +157,17 @@ impl Train {
         if self.s == 0. && self.speed < 0. {
             self.speed = 0.;
         }
-        if self.track.len() as f64 <= self.s && 0. < self.speed {
+        if self.path_bundle.track.len() as f64 <= self.s && 0. < self.speed {
             self.speed = 0.;
         }
-        self.s = (self.s + self.speed).clamp(0., self.track.len() as f64);
+        self.s = (self.s + self.speed).clamp(0., self.path_bundle.track.len() as f64);
     }
 
     pub fn add_gentle(&mut self, pos: Vec2<f64>) -> Result<(), String> {
         match self.compute_gentle(pos) {
-            Ok((path_segment, _)) => self.path_segments.push(path_segment),
+            Ok(path_segments) => self.path_bundle.extend(&path_segments.segments),
             Err(e) => {
-                self.ghost_segment = None;
+                self.ghost_path = None;
                 return Err(e);
             }
         }
@@ -169,14 +175,11 @@ impl Train {
     }
 
     pub fn ghost_gentle(&mut self, pos: Vec2<f64>) {
-        self.ghost_segment = self
-            .compute_gentle(pos)
-            .ok()
-            .map(|(path_segment, track)| (vec![path_segment], track));
+        self.ghost_path = self.compute_gentle(pos).ok();
     }
 
-    fn compute_gentle(&self, pos: Vec2<f64>) -> Result<(PathSegment, Vec<Vec2<f64>>), String> {
-        let Some(prev) = self.path_segments.last() else {
+    fn compute_gentle(&self, pos: Vec2<f64>) -> Result<PathBundle, String> {
+        let Some(prev) = self.path_bundle.segments.last() else {
             return Err("Path needs at least one segment to connect to".to_string());
         };
         let prev_pos = prev.end();
@@ -197,25 +200,21 @@ impl Train {
             start,
             end,
         ));
-        let track = compute_track_ps(&[path_segment]);
-        Ok((path_segment, track))
+        Ok(PathBundle::single(path_segment))
     }
 
     pub fn add_straight(&mut self, pos: Vec2<f64>) -> Result<(), String> {
-        let (path_segment, _) = self.compute_straight(pos)?;
-        self.path_segments.push(path_segment);
+        let path_segments = self.compute_straight(pos)?;
+        self.path_bundle.extend(&path_segments.segments);
         Ok(())
     }
 
     pub fn ghost_straight(&mut self, pos: Vec2<f64>) {
-        self.ghost_segment = self
-            .compute_straight(pos)
-            .ok()
-            .map(|(path_segment, track)| (vec![path_segment], track));
+        self.ghost_path = self.compute_straight(pos).ok();
     }
 
-    fn compute_straight(&self, pos: Vec2<f64>) -> Result<(PathSegment, Vec<Vec2<f64>>), String> {
-        let Some(prev) = self.path_segments.last() else {
+    fn compute_straight(&self, pos: Vec2<f64>) -> Result<PathBundle, String> {
+        let Some(prev) = self.path_bundle.segments.last() else {
             return Err("Path needs at least one segment to connect to".to_string());
         };
         let prev_pos = prev.end();
@@ -230,25 +229,21 @@ impl Train {
         }
         let perpendicular_foot = prev_pos + tangent * dot;
         let path_segment = PathSegment::Line([prev_pos, perpendicular_foot]);
-        let track = compute_track_ps(&[path_segment]);
-        Ok((path_segment, track))
+        Ok(PathBundle::single(path_segment))
     }
 
     pub fn add_tight(&mut self, pos: Vec2<f64>) -> Result<(), String> {
-        let (path_segments, _) = self.compute_tight(pos)?;
-        self.path_segments.extend_from_slice(&path_segments);
+        let path_segments = self.compute_tight(pos)?;
+        self.path_bundle.extend(&path_segments.segments);
         Ok(())
     }
 
     pub fn ghost_tight(&mut self, pos: Vec2<f64>) {
-        self.ghost_segment = self
-            .compute_tight(pos)
-            .ok()
-            .map(|(path_segments, track)| (path_segments.to_vec(), track));
+        self.ghost_path = self.compute_tight(pos).ok();
     }
 
-    fn compute_tight(&self, pos: Vec2<f64>) -> Result<([PathSegment; 2], Vec<Vec2<f64>>), String> {
-        let Some(prev) = self.path_segments.last() else {
+    fn compute_tight(&self, pos: Vec2<f64>) -> Result<PathBundle, String> {
+        let Some(prev) = self.path_bundle.segments.last() else {
             return Err("Path needs at least one segment to connect to".to_string());
         };
         let prev_pos = prev.end();
@@ -285,17 +280,16 @@ impl Train {
                 PathSegment::Arc(CircleArc::new(a, MIN_RADIUS, start_angle, end_angle)),
                 PathSegment::Line([tangent_pos, pos]),
             ];
-            let track = compute_track_ps(&path_segments);
-            Ok((path_segments, track))
+            Ok(PathBundle::multi(path_segments))
         } else {
             Err("Clicked point requires tighter curvature radius than allowed".to_string())
         }
     }
 
     pub fn delete_node(&mut self, pos: Vec2<f64>, dist_thresh: f64) -> Result<(), String> {
-        if let Some((i, _)) = self.find_node(pos, dist_thresh) {
-            if i == self.path_segments.len() - 1 {
-                self.path_segments.pop();
+        if let Some((i, _)) = self.path_bundle.find_node(pos, dist_thresh) {
+            if i == self.path_bundle.segments.len() - 1 {
+                self.path_bundle.segments.pop();
             } else {
                 return Err("Only deleting the last node is supported yet".to_string());
             }
@@ -304,107 +298,4 @@ impl Train {
         }
         Ok(())
     }
-
-    pub fn find_node(&self, pos: Vec2<f64>, dist_thresh: f64) -> Option<(usize, Vec2<f64>)> {
-        let dist2_thresh = dist_thresh.powi(2);
-        let closest_node: Option<(usize, f64)> =
-            self.path_segments
-                .iter()
-                .enumerate()
-                .fold(None, |acc, cur| {
-                    let dist2 = (cur.1.end() - pos).length2();
-                    if let Some(acc) = acc {
-                        if acc.1 < dist2 {
-                            Some(acc)
-                        } else {
-                            Some((cur.0, dist2))
-                        }
-                    } else if dist2 < dist2_thresh {
-                        Some((cur.0, dist2))
-                    } else {
-                        None
-                    }
-                });
-        closest_node.map(|(i, _)| (i, self.path_segments[i].end()))
-    }
-}
-
-fn _compute_track(control_points: &[Vec2<f64>]) -> Vec<Vec2<f64>> {
-    let segment_lengths =
-        control_points
-            .windows(3)
-            .enumerate()
-            .fold(vec![], |mut acc, (cur_i, cur)| {
-                if cur_i % 2 == 0 {
-                    acc.push(_bezier_length(cur).unwrap_or(0.));
-                }
-                acc
-            });
-    let cumulative_lengths: Vec<f64> = segment_lengths.iter().fold(vec![], |mut acc, cur| {
-        if let Some(v) = acc.last() {
-            acc.push(v + *cur);
-        } else {
-            acc.push(*cur);
-        }
-        acc
-    });
-    let total_length: f64 = segment_lengths.iter().copied().sum();
-    let num_nodes = (total_length / SEGMENT_LENGTH) as usize;
-    println!("cumulative_lengths: {cumulative_lengths:?}");
-    (0..num_nodes)
-        .map(|i| {
-            let fidx = i as f64 * SEGMENT_LENGTH;
-            let (seg_idx, _) = cumulative_lengths
-                .iter()
-                .enumerate()
-                .find(|(_i, l)| fidx < **l)
-                .unwrap();
-            let (frem, _cum_len) = if seg_idx == 0 {
-                (fidx, 0.)
-            } else {
-                let cum_len = cumulative_lengths[seg_idx - 1];
-                (fidx - cum_len, cum_len)
-            };
-            // println!("[{}, {}, {}],", seg_idx, frem, cum_len + frem);
-            let seg_len = segment_lengths[seg_idx];
-            _bezier_interp(
-                &control_points[seg_idx * 2..seg_idx * 2 + 3],
-                frem / seg_len,
-            )
-            .unwrap()
-        })
-        .collect()
-}
-
-fn compute_track_ps(path_segments: &[PathSegment]) -> Vec<Vec2<f64>> {
-    let segment_lengths: Vec<_> = path_segments.iter().map(|seg| seg.length()).collect();
-    let cumulative_lengths: Vec<f64> = segment_lengths.iter().fold(vec![], |mut acc, cur| {
-        if let Some(v) = acc.last() {
-            acc.push(v + *cur);
-        } else {
-            acc.push(*cur);
-        }
-        acc
-    });
-    let total_length = *cumulative_lengths.last().unwrap();
-    let num_nodes = (total_length / SEGMENT_LENGTH) as usize + 1;
-    (0..=num_nodes)
-        .filter_map(|i| {
-            let fidx = i as f64 * SEGMENT_LENGTH;
-            let seg_idx = cumulative_lengths
-                .iter()
-                .enumerate()
-                .find(|(_i, l)| fidx < **l)
-                .map(|(i, _)| i)
-                .unwrap_or_else(|| cumulative_lengths.len() - 1);
-            let (frem, _cum_len) = if seg_idx == 0 {
-                (fidx, 0.)
-            } else {
-                let cum_len = cumulative_lengths[seg_idx - 1];
-                (fidx - cum_len, cum_len)
-            };
-            let seg_len = segment_lengths[seg_idx];
-            path_segments[seg_idx].interp((frem / seg_len).clamp(0., 1.))
-        })
-        .collect()
 }
