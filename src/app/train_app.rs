@@ -1,5 +1,5 @@
 use eframe::{
-    egui::{self, Context, Frame, Ui},
+    egui::{self, Context, Frame, Painter, Ui},
     emath::Align2,
     epaint::{pos2, Color32, FontId, PathShape, Pos2, Stroke},
 };
@@ -7,7 +7,7 @@ use eframe::{
 use crate::{
     models::train::{Station, Train, TrainTask},
     path_utils::PathSegment,
-    transform::{half_rect, Transform},
+    transform::{half_rect, PaintTransform, Transform},
     vec2::Vec2,
 };
 
@@ -129,6 +129,15 @@ impl TrainApp {
         });
     }
 
+    fn process_result(&mut self, pos: Vec2<f64>, res: Result<(), String>) {
+        if let Err(e) = res {
+            self.error_msg = Some((e, 10.));
+        } else {
+            self.train.recompute_track();
+            println!("Added point {pos:?}");
+        }
+    }
+
     pub fn paint_graph(&mut self, ui: &mut Ui) {
         Frame::canvas(ui.style()).show(ui, |ui| {
             let (response, painter) =
@@ -154,37 +163,24 @@ impl TrainApp {
                         ClickMode::GentleCurve => {
                             let pos = paint_transform.from_pos2(pointer);
                             // self.train.control_points.push(pos);
-                            self.train.add_point(pos);
-                            self.train.recompute_track();
-                            println!("Added point {pos:?}");
+                            let res = self.train.add_point(pos);
+                            self.process_result(pos, res);
                         }
                         ClickMode::TightCurve => {
                             let pos = paint_transform.from_pos2(pointer);
-                            if let Err(e) = self.train.add_tight(pos) {
-                                self.error_msg = Some((e, 10.));
-                            } else {
-                                self.train.recompute_track();
-                                println!("Added point {pos:?}");
-                            }
+                            let res = self.train.add_tight(pos);
+                            self.process_result(pos, res);
                         }
                         ClickMode::StraightLine => {
                             let pos = paint_transform.from_pos2(pointer);
-                            if let Err(e) = self.train.add_straight(pos) {
-                                self.error_msg = Some((e, 10.));
-                            } else {
-                                self.train.recompute_track();
-                                println!("Added point {pos:?}");
-                            }
+                            let res = self.train.add_straight(pos);
+                            self.process_result(pos, res);
                         }
                         ClickMode::Delete => {
                             let pos = paint_transform.from_pos2(pointer);
                             let thresh = SELECT_PIXEL_RADIUS / self.transform.scale() as f64;
-                            if let Err(e) = self.train.delete_node(pos, thresh) {
-                                self.error_msg = Some((e, 10.));
-                            } else {
-                                self.train.recompute_track();
-                                println!("Added point {pos:?}");
-                            }
+                            let res = self.train.delete_node(pos, thresh);
+                            self.process_result(pos, res);
                         }
                     }
                 }
@@ -244,31 +240,55 @@ impl TrainApp {
             };
             let scale_vec = |scale: f32, vec: &[f32; 2]| [vec[0] * scale, vec[1] * scale];
 
-            if matches!(self.click_mode, ClickMode::Delete) {
-                let found_node = response.hover_pos().and_then(|pointer| {
-                    let thresh = SELECT_PIXEL_RADIUS / self.transform.scale() as f64;
-                    self.train
-                        .find_node(paint_transform.from_pos2(pointer), thresh)
-                });
-                if let Some(found_node) = found_node {
-                    let src_pos = paint_transform.to_pos2(found_node.1);
-                    painter.circle(
-                        src_pos,
-                        SELECT_PIXEL_RADIUS as f32,
-                        Color32::from_rgba_premultiplied(127, 0, 127, 63),
-                        (1., Color32::from_rgb(255, 0, 255)),
-                    );
-                }
-                for (i, seg) in self.train.path_segments.iter().enumerate() {
-                    if found_node.is_some_and(|(found, _)| found == i) {
-                        continue;
+            match self.click_mode {
+                ClickMode::None => self.train.ghost_segment = None,
+                ClickMode::GentleCurve => {
+                    if let Some(pos) = response.hover_pos() {
+                        self.train.ghost_point(paint_transform.from_pos2(pos));
+                    } else {
+                        self.train.ghost_segment = None;
                     }
-                    let src_pos = paint_transform.to_pos2(seg.end());
-                    painter.circle_stroke(
-                        src_pos,
-                        SELECT_PIXEL_RADIUS as f32,
-                        (0.5, Color32::from_rgb(127, 0, 127)),
-                    );
+                }
+                ClickMode::StraightLine => {
+                    if let Some(pos) = response.hover_pos() {
+                        self.train.ghost_straight(paint_transform.from_pos2(pos));
+                    } else {
+                        self.train.ghost_segment = None;
+                    }
+                }
+                ClickMode::TightCurve => {
+                    if let Some(pos) = response.hover_pos() {
+                        self.train.ghost_tight(paint_transform.from_pos2(pos));
+                    } else {
+                        self.train.ghost_segment = None;
+                    }
+                }
+                ClickMode::Delete => {
+                    let found_node = response.hover_pos().and_then(|pointer| {
+                        let thresh = SELECT_PIXEL_RADIUS / self.transform.scale() as f64;
+                        self.train
+                            .find_node(paint_transform.from_pos2(pointer), thresh)
+                    });
+                    if let Some(found_node) = found_node {
+                        let src_pos = paint_transform.to_pos2(found_node.1);
+                        painter.circle(
+                            src_pos,
+                            SELECT_PIXEL_RADIUS as f32,
+                            Color32::from_rgba_premultiplied(127, 0, 127, 63),
+                            (1., Color32::from_rgb(255, 0, 255)),
+                        );
+                    }
+                    for (i, seg) in self.train.path_segments.iter().enumerate() {
+                        if found_node.is_some_and(|(found, _)| found == i) {
+                            continue;
+                        }
+                        let src_pos = paint_transform.to_pos2(seg.end());
+                        painter.circle_stroke(
+                            src_pos,
+                            SELECT_PIXEL_RADIUS as f32,
+                            (0.5, Color32::from_rgb(127, 0, 127)),
+                        );
+                    }
                 }
             }
 
@@ -295,72 +315,15 @@ impl TrainApp {
             }
 
             if 1. < self.transform.scale() {
-                let parallel_offset = |ofs| {
-                    let paint_transform = &paint_transform;
-                    move |(prev, next): (&Vec2<f64>, &Vec2<f64>)| {
-                        let delta = (*next - *prev).normalized();
-                        Pos2::from(paint_transform.to_pos2(delta.left90() * ofs + *prev))
-                    }
-                };
-
-                const RAIL_HALFWIDTH: f64 = 1.25;
-                const TIE_HALFLENGTH: f64 = 1.5;
-                const TIE_HALFWIDTH: f64 = 0.3;
-                const TIE_INTERPOLATES: usize = 3;
-
-                let track = &self.train.track;
-
-                for ofs in [RAIL_HALFWIDTH, -RAIL_HALFWIDTH] {
-                    let left_rail_points = track
-                        .iter()
-                        .zip(track.iter().skip(1))
-                        .map(parallel_offset(ofs))
-                        .collect();
-                    let left_rail =
-                        PathShape::line(left_rail_points, (1., Color32::from_rgb(255, 0, 255)));
-                    painter.add(left_rail);
+                if let Some((_, track)) = &self.train.ghost_segment {
+                    self.render_track_detail(track, &painter, &paint_transform, 63);
                 }
-
-                if self.show_rail_ties {
-                    for (prev, next) in track.iter().zip(track.iter().skip(1)) {
-                        let delta = *next - *prev;
-                        let tangent = delta.normalized();
-                        for i in 0..TIE_INTERPOLATES {
-                            let offset = *prev + delta * i as f64 / TIE_INTERPOLATES as f64;
-                            let left = tangent.left90() * TIE_HALFLENGTH + offset;
-                            let right = tangent.left90() * -TIE_HALFLENGTH + offset;
-                            let left_front = left + tangent * TIE_HALFWIDTH;
-                            let left_back = left + tangent * -TIE_HALFWIDTH;
-                            let right_front = right + tangent * TIE_HALFWIDTH;
-                            let right_back = right + tangent * -TIE_HALFWIDTH;
-                            let tie = PathShape::closed_line(
-                                [left_front, right_front, right_back, left_back]
-                                    .into_iter()
-                                    .map(|v| paint_transform.to_pos2(v))
-                                    .collect(),
-                                (1., Color32::from_rgb(255, 0, 255)),
-                            );
-                            painter.add(tie);
-                        }
-                    }
-                }
+                self.render_track_detail(&self.train.track, &painter, &paint_transform, 255);
             } else {
-                let track_points: Vec<_> = self
-                    .train
-                    .track
-                    .iter()
-                    .map(|ofs| Pos2::from(paint_transform.to_pos2(*ofs)))
-                    .collect();
-
-                if self.show_track_nodes {
-                    for track_point in &track_points {
-                        painter.circle_filled(*track_point, 3., Color32::from_rgb(255, 0, 255));
-                    }
+                if let Some((_, track)) = &self.train.ghost_segment {
+                    self.render_track(track, &painter, &paint_transform, 63);
                 }
-
-                let track_line =
-                    PathShape::line(track_points, (2., Color32::from_rgb(255, 0, 255)));
-                painter.add(track_line);
+                self.render_track(&self.train.track, &painter, &paint_transform, 255);
             }
 
             const STATION_HEIGHT: f64 = 2.;
@@ -458,5 +421,85 @@ impl TrainApp {
                 );
             }
         });
+    }
+
+    fn render_track_detail(
+        &self,
+        track: &[Vec2<f64>],
+        painter: &Painter,
+        paint_transform: &PaintTransform,
+        alpha: u8,
+    ) {
+        let parallel_offset = |ofs| {
+            let paint_transform = &paint_transform;
+            move |(prev, next): (&Vec2<f64>, &Vec2<f64>)| {
+                let delta = (*next - *prev).normalized();
+                Pos2::from(paint_transform.to_pos2(delta.left90() * ofs + *prev))
+            }
+        };
+
+        const RAIL_HALFWIDTH: f64 = 1.25;
+        const TIE_HALFLENGTH: f64 = 1.5;
+        const TIE_HALFWIDTH: f64 = 0.3;
+        const TIE_INTERPOLATES: usize = 3;
+        let color = Color32::from_rgba_premultiplied(255, 0, 255, alpha);
+
+        for ofs in [RAIL_HALFWIDTH, -RAIL_HALFWIDTH] {
+            let left_rail_points = track
+                .iter()
+                .zip(track.iter().skip(1))
+                .map(parallel_offset(ofs))
+                .collect();
+            let left_rail = PathShape::line(left_rail_points, (1., color));
+            painter.add(left_rail);
+        }
+
+        if self.show_rail_ties {
+            for (prev, next) in track.iter().zip(track.iter().skip(1)) {
+                let delta = *next - *prev;
+                let tangent = delta.normalized();
+                for i in 0..TIE_INTERPOLATES {
+                    let offset = *prev + delta * i as f64 / TIE_INTERPOLATES as f64;
+                    let left = tangent.left90() * TIE_HALFLENGTH + offset;
+                    let right = tangent.left90() * -TIE_HALFLENGTH + offset;
+                    let left_front = left + tangent * TIE_HALFWIDTH;
+                    let left_back = left + tangent * -TIE_HALFWIDTH;
+                    let right_front = right + tangent * TIE_HALFWIDTH;
+                    let right_back = right + tangent * -TIE_HALFWIDTH;
+                    let tie = PathShape::closed_line(
+                        [left_front, right_front, right_back, left_back]
+                            .into_iter()
+                            .map(|v| paint_transform.to_pos2(v))
+                            .collect(),
+                        (1., color),
+                    );
+                    painter.add(tie);
+                }
+            }
+        }
+    }
+
+    fn render_track(
+        &self,
+        track: &[Vec2<f64>],
+        painter: &Painter,
+        paint_transform: &PaintTransform,
+        alpha: u8,
+    ) {
+        let track_points: Vec<_> = track
+            .iter()
+            .map(|ofs| Pos2::from(paint_transform.to_pos2(*ofs)))
+            .collect();
+
+        let color = Color32::from_rgba_premultiplied(255, 0, 255, alpha);
+
+        if self.show_track_nodes {
+            for track_point in &track_points {
+                painter.circle_filled(*track_point, 3., color);
+            }
+        }
+
+        let track_line = PathShape::line(track_points, (2., color));
+        painter.add(track_line);
     }
 }

@@ -53,6 +53,8 @@ pub(crate) enum TrainTask {
 pub(crate) struct Train {
     // pub control_points: Vec<Vec2<f64>>,
     pub path_segments: Vec<PathSegment>,
+    /// Build ghost segment, which is not actually built yet
+    pub ghost_segment: Option<(Vec<PathSegment>, Vec<Vec2<f64>>)>,
     /// Position along the track
     pub s: f64,
     /// Speed along s
@@ -69,6 +71,7 @@ impl Train {
         Self {
             // control_points: C_POINTS.to_vec(),
             path_segments: PATH_SEGMENTS.to_vec(),
+            ghost_segment: None,
             speed: 0.,
             s: 0.,
             track: compute_track_ps(&PATH_SEGMENTS),
@@ -154,9 +157,27 @@ impl Train {
         self.s = (self.s + self.speed).clamp(0., self.track.len() as f64);
     }
 
-    pub fn add_point(&mut self, pos: Vec2<f64>) {
+    pub fn add_point(&mut self, pos: Vec2<f64>) -> Result<(), String> {
+        match self.compute_point(pos) {
+            Ok((path_segment, _)) => self.path_segments.push(path_segment),
+            Err(e) => {
+                self.ghost_segment = None;
+                return Err(e);
+            }
+        }
+        Ok(())
+    }
+
+    pub fn ghost_point(&mut self, pos: Vec2<f64>) {
+        self.ghost_segment = self
+            .compute_point(pos)
+            .ok()
+            .map(|(path_segment, track)| (vec![path_segment], track));
+    }
+
+    fn compute_point(&self, pos: Vec2<f64>) -> Result<(PathSegment, Vec<Vec2<f64>>), String> {
         let Some(prev) = self.path_segments.last() else {
-            return;
+            return Err("Path needs at least one segment to connect to".to_string());
         };
         let prev_pos = prev.end();
         let prev_angle = prev.end_angle();
@@ -167,15 +188,30 @@ impl Train {
         let radius = delta.length() / 2. / phi.sin();
         let start = wrap_angle(prev_angle - radius.signum() * std::f64::consts::PI * 0.5);
         let end = start + phi * 2.;
-        self.path_segments.push(PathSegment::Arc(CircleArc::new(
+        let path_segment = PathSegment::Arc(CircleArc::new(
             prev_pos + normal * radius,
             radius.abs(),
             start,
             end,
-        )))
+        ));
+        let track = compute_track_ps(&[path_segment]);
+        Ok((path_segment, track))
     }
 
     pub fn add_straight(&mut self, pos: Vec2<f64>) -> Result<(), String> {
+        let (path_segment, _) = self.compute_straight(pos)?;
+        self.path_segments.push(path_segment);
+        Ok(())
+    }
+
+    pub fn ghost_straight(&mut self, pos: Vec2<f64>) {
+        self.ghost_segment = self
+            .compute_straight(pos)
+            .ok()
+            .map(|(path_segment, track)| (vec![path_segment], track));
+    }
+
+    fn compute_straight(&self, pos: Vec2<f64>) -> Result<(PathSegment, Vec<Vec2<f64>>), String> {
         let Some(prev) = self.path_segments.last() else {
             return Err("Path needs at least one segment to connect to".to_string());
         };
@@ -190,12 +226,25 @@ impl Train {
             );
         }
         let perpendicular_foot = prev_pos + tangent * dot;
-        self.path_segments
-            .push(PathSegment::Line([prev_pos, perpendicular_foot]));
-        Ok(())
+        let path_segment = PathSegment::Line([prev_pos, perpendicular_foot]);
+        let track = compute_track_ps(&[path_segment]);
+        Ok((path_segment, track))
     }
 
     pub fn add_tight(&mut self, pos: Vec2<f64>) -> Result<(), String> {
+        let (path_segments, _) = self.compute_tight(pos)?;
+        self.path_segments.extend_from_slice(&path_segments);
+        Ok(())
+    }
+
+    pub fn ghost_tight(&mut self, pos: Vec2<f64>) {
+        self.ghost_segment = self
+            .compute_tight(pos)
+            .ok()
+            .map(|(path_segments, track)| (path_segments.to_vec(), track));
+    }
+
+    fn compute_tight(&self, pos: Vec2<f64>) -> Result<([PathSegment; 2], Vec<Vec2<f64>>), String> {
         let Some(prev) = self.path_segments.last() else {
             return Err("Path needs at least one segment to connect to".to_string());
         };
@@ -229,18 +278,15 @@ impl Train {
         }
         if let Some((end_angle, start_angle, a)) = tangent_angle {
             let tangent_pos = a + Vec2::new(end_angle.cos(), end_angle.sin()) * MIN_RADIUS;
-            self.path_segments.push(PathSegment::Arc(CircleArc::new(
-                a,
-                MIN_RADIUS,
-                start_angle,
-                end_angle,
-            )));
-            self.path_segments
-                .push(PathSegment::Line([tangent_pos, pos]));
+            let path_segments = [
+                PathSegment::Arc(CircleArc::new(a, MIN_RADIUS, start_angle, end_angle)),
+                PathSegment::Line([tangent_pos, pos]),
+            ];
+            let track = compute_track_ps(&path_segments);
+            Ok((path_segments, track))
         } else {
-            return Err("Clicked point requires tighter curvature radius than allowed".to_string());
+            Err("Clicked point requires tighter curvature radius than allowed".to_string())
         }
-        Ok(())
     }
 
     pub fn delete_node(&mut self, pos: Vec2<f64>, dist_thresh: f64) -> Result<(), String> {
@@ -339,9 +385,8 @@ fn compute_track_ps(path_segments: &[PathSegment]) -> Vec<Vec2<f64>> {
     });
     let total_length = *cumulative_lengths.last().unwrap();
     let num_nodes = (total_length / SEGMENT_LENGTH) as usize + 1;
-    println!("cumulative_lengths: {cumulative_lengths:?}, total_length: {total_length}");
     (0..=num_nodes)
-        .map(|i| {
+        .filter_map(|i| {
             let fidx = i as f64 * SEGMENT_LENGTH;
             let seg_idx = cumulative_lengths
                 .iter()
@@ -355,7 +400,6 @@ fn compute_track_ps(path_segments: &[PathSegment]) -> Vec<Vec2<f64>> {
                 let cum_len = cumulative_lengths[seg_idx - 1];
                 (fidx - cum_len, cum_len)
             };
-            // println!("[{i}, {}, {}, {}],", seg_idx, frem, _cum_len + frem);
             let seg_len = segment_lengths[seg_idx];
             path_segments[seg_idx].interp((frem / seg_len).clamp(0., 1.))
         })

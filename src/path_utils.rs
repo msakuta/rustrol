@@ -200,16 +200,18 @@ impl PathSegment {
         }
     }
 
-    pub(crate) fn interp(&self, s: f64) -> Vec2<f64> {
-        assert!(0. <= s && s <= 1.);
-        match self {
+    pub(crate) fn interp(&self, s: f64) -> Option<Vec2<f64>> {
+        if !(0. <= s && s <= 1.) {
+            return None;
+        }
+        Some(match self {
             Self::Line(pts) => pts[0] * (1. - s) + pts[1] * s,
             Self::Arc(arc) => {
                 let phase = arc.start * (1. - s) + arc.end * s;
                 let relpos = Vec2::new(phase.cos(), phase.sin()) * arc.radius;
                 arc.center + relpos
             }
-        }
+        })
     }
 }
 
