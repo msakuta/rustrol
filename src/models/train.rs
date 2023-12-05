@@ -1,5 +1,7 @@
 mod path_bundle;
 
+use std::collections::HashMap;
+
 use crate::{
     path_utils::{
         interpolate_path, interpolate_path_heading, wrap_angle, wrap_angle_offset, CircleArc,
@@ -44,7 +46,18 @@ pub(crate) const PATH_SEGMENTS: [PathSegment; 4] = [
 
 pub(crate) struct Station {
     pub name: String,
+    pub path_id: usize,
     pub s: f64,
+}
+
+impl Station {
+    pub fn new(name: impl Into<String>, s: f64) -> Self {
+        Self {
+            name: name.into(),
+            path_id: 0,
+            s,
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -56,9 +69,11 @@ pub(crate) enum TrainTask {
 
 pub(crate) struct Train {
     // pub control_points: Vec<Vec2<f64>>,
-    pub path_bundle: PathBundle,
+    pub paths: HashMap<usize, PathBundle>,
     /// Build ghost segment, which is not actually built yet
     pub ghost_path: Option<PathBundle>,
+    /// The index of the path_bundle that the train is on
+    pub path_id: usize,
     /// Position along the track
     pub s: f64,
     /// Speed along s
@@ -70,49 +85,44 @@ pub(crate) struct Train {
 
 impl Train {
     pub fn new() -> Self {
+        let mut paths = HashMap::new();
+        paths.insert(0, PathBundle::multi(PATH_SEGMENTS.to_vec()));
         Self {
             // control_points: C_POINTS.to_vec(),
-            path_bundle: PathBundle::multi(PATH_SEGMENTS.to_vec()),
+            paths,
             ghost_path: None,
             speed: 0.,
             s: 0.,
-            stations: vec![
-                Station {
-                    name: "Start".to_string(),
-                    s: 10.,
-                },
-                Station {
-                    name: "Goal".to_string(),
-                    s: 70.,
-                },
-            ],
+            path_id: 0,
+            stations: vec![Station::new("Start", 10.), Station::new("Goal", 70.)],
             train_task: TrainTask::Idle,
             schedule: vec![],
         }
     }
 
     pub fn control_points(&self) -> Vec<Vec2<f64>> {
-        self.path_bundle
-            .segments
-            .iter()
+        self.paths
+            .values()
+            .map(|b| b.segments.iter())
+            .flatten()
             .map(|seg| seg.end())
             .collect()
     }
 
-    pub fn s_pos(&self, s: f64) -> Option<Vec2<f64>> {
-        interpolate_path(&self.path_bundle.track, s)
+    pub fn s_pos(&self, path_id: usize, s: f64) -> Option<Vec2<f64>> {
+        interpolate_path(&self.paths[&path_id].track, s)
     }
 
     pub fn train_pos(&self, car_idx: usize) -> Option<Vec2<f64>> {
         interpolate_path(
-            &self.path_bundle.track,
+            &self.paths[&self.path_id].track,
             self.s - car_idx as f64 * CAR_LENGTH,
         )
     }
 
     pub fn heading(&self, car_idx: usize) -> Option<f64> {
         interpolate_path_heading(
-            &self.path_bundle.track,
+            &self.paths[&self.path_id].track,
             self.s - car_idx as f64 * CAR_LENGTH,
         )
     }
@@ -157,15 +167,19 @@ impl Train {
         if self.s == 0. && self.speed < 0. {
             self.speed = 0.;
         }
-        if self.path_bundle.track.len() as f64 <= self.s && 0. < self.speed {
+        if self.paths[&self.path_id].track.len() as f64 <= self.s && 0. < self.speed {
             self.speed = 0.;
         }
-        self.s = (self.s + self.speed).clamp(0., self.path_bundle.track.len() as f64);
+        self.s = (self.s + self.speed).clamp(0., self.paths[&self.path_id].track.len() as f64);
     }
 
     pub fn add_gentle(&mut self, pos: Vec2<f64>) -> Result<(), String> {
         match self.compute_gentle(pos) {
-            Ok(path_segments) => self.path_bundle.extend(&path_segments.segments),
+            Ok(path_segments) => {
+                if let Some(path) = self.paths.get_mut(&self.path_id) {
+                    path.extend(&path_segments.segments);
+                }
+            }
             Err(e) => {
                 self.ghost_path = None;
                 return Err(e);
@@ -179,7 +193,7 @@ impl Train {
     }
 
     fn compute_gentle(&self, pos: Vec2<f64>) -> Result<PathBundle, String> {
-        let Some(prev) = self.path_bundle.segments.last() else {
+        let Some(prev) = self.paths[&self.path_id].segments.last() else {
             return Err("Path needs at least one segment to connect to".to_string());
         };
         let prev_pos = prev.end();
@@ -205,7 +219,9 @@ impl Train {
 
     pub fn add_straight(&mut self, pos: Vec2<f64>) -> Result<(), String> {
         let path_segments = self.compute_straight(pos)?;
-        self.path_bundle.extend(&path_segments.segments);
+        if let Some(path) = self.paths.get_mut(&self.path_id) {
+            path.extend(&path_segments.segments);
+        }
         Ok(())
     }
 
@@ -214,7 +230,7 @@ impl Train {
     }
 
     fn compute_straight(&self, pos: Vec2<f64>) -> Result<PathBundle, String> {
-        let Some(prev) = self.path_bundle.segments.last() else {
+        let Some(prev) = self.paths[&self.path_id].segments.last() else {
             return Err("Path needs at least one segment to connect to".to_string());
         };
         let prev_pos = prev.end();
@@ -234,7 +250,9 @@ impl Train {
 
     pub fn add_tight(&mut self, pos: Vec2<f64>) -> Result<(), String> {
         let path_segments = self.compute_tight(pos)?;
-        self.path_bundle.extend(&path_segments.segments);
+        if let Some(path) = self.paths.get_mut(&self.path_id) {
+            path.extend(&path_segments.segments);
+        }
         Ok(())
     }
 
@@ -243,7 +261,7 @@ impl Train {
     }
 
     fn compute_tight(&self, pos: Vec2<f64>) -> Result<PathBundle, String> {
-        let Some(prev) = self.path_bundle.segments.last() else {
+        let Some(prev) = self.paths[&self.path_id].segments.last() else {
             return Err("Path needs at least one segment to connect to".to_string());
         };
         let prev_pos = prev.end();
@@ -286,15 +304,56 @@ impl Train {
         }
     }
 
-    pub fn delete_node(&mut self, pos: Vec2<f64>, dist_thresh: f64) -> Result<(), String> {
-        if let Some((i, _)) = self.path_bundle.find_node(pos, dist_thresh) {
-            if i == self.path_bundle.segments.len() - 1 {
-                self.path_bundle.segments.pop();
-            } else {
-                return Err("Only deleting the last node is supported yet".to_string());
+    /// Returns a tuple of (path id, global node id, segment id)
+    pub fn find_path_node(&self, pos: Vec2<f64>, thresh: f64) -> Option<(usize, usize, usize)> {
+        self.paths.iter().find_map(|(path_id, path)| {
+            let (global_id, seg_id) = path.find_node(pos, thresh)?;
+            Some((*path_id, global_id, seg_id))
+        })
+    }
+
+    pub fn delete_segment(&mut self, pos: Vec2<f64>, dist_thresh: f64) -> Result<(), String> {
+        let found_node = self.paths.iter_mut().find_map(|(id, path)| {
+            let (node, seg) = path.find_node(pos, dist_thresh)?;
+            Some(((id, path), seg, node))
+        });
+        let mut path_to_delete = None;
+        if let Some(((&path_id, path), seg, i)) = found_node {
+            if seg == path.find_seg_by_s(self.s as usize) {
+                return Err("You can't delete a segment while a train is on it".to_string());
+            }
+            if let Some(new_path) = path.delete_node(i) {
+                let max_id = self.paths.keys().max().copied().unwrap_or(0);
+                self.paths.insert(max_id + 1, new_path);
+
+                let move_s = |path_id: &mut usize, s: &mut f64, name: &str| {
+                    if i as f64 <= *s {
+                        println!(
+                            "Moving {name} path: {}, {}",
+                            self.paths.len() - 1,
+                            (*s - i as f64).max(0.)
+                        );
+                        *path_id = self.paths.len() - 1;
+                        *s = (*s - i as f64).max(0.);
+                    }
+                };
+
+                move_s(&mut self.path_id, &mut self.s, "train");
+                for station in &mut self.stations {
+                    move_s(
+                        &mut station.path_id,
+                        &mut station.s,
+                        &format!("station {}", station.name),
+                    );
+                }
+            } else if path.segments.len() == 0 {
+                path_to_delete = Some(path_id);
             }
         } else {
-            return Err("No node is selected for deleting".to_string());
+            return Err("No segment is selected for deleting".to_string());
+        }
+        if let Some(path_id) = path_to_delete {
+            self.paths.remove(&path_id);
         }
         Ok(())
     }

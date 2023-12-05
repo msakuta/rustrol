@@ -110,10 +110,10 @@ impl TrainApp {
             }
             ui.text_edit_singleline(&mut self.new_station);
             if ui.button("Add station").clicked() {
-                self.train.stations.push(Station {
-                    name: std::mem::take(&mut self.new_station),
-                    s: self.train.path_bundle.track.len() as f64 - 10.,
-                })
+                self.train.stations.push(Station::new(
+                    std::mem::take(&mut self.new_station),
+                    self.train.paths[&self.train.path_id].track.len() as f64 - 10.,
+                ))
             }
         });
         ui.group(|ui| {
@@ -133,7 +133,6 @@ impl TrainApp {
         if let Err(e) = res {
             self.error_msg = Some((e, 10.));
         } else {
-            self.train.path_bundle.recompute_track();
             println!("Added point {pos:?}");
         }
     }
@@ -179,7 +178,7 @@ impl TrainApp {
                         ClickMode::Delete => {
                             let pos = paint_transform.from_pos2(pointer);
                             let thresh = SELECT_PIXEL_RADIUS / self.transform.scale() as f64;
-                            let res = self.train.delete_node(pos, thresh);
+                            let res = self.train.delete_segment(pos, thresh);
                             self.process_result(pos, res);
                         }
                     }
@@ -267,28 +266,20 @@ impl TrainApp {
                     let found_node = response.hover_pos().and_then(|pointer| {
                         let thresh = SELECT_PIXEL_RADIUS / self.transform.scale() as f64;
                         self.train
-                            .path_bundle
-                            .find_node(paint_transform.from_pos2(pointer), thresh)
+                            .find_path_node(paint_transform.from_pos2(pointer), thresh)
                     });
-                    if let Some(found_node) = found_node {
-                        let src_pos = paint_transform.to_pos2(found_node.1);
-                        painter.circle(
-                            src_pos,
-                            SELECT_PIXEL_RADIUS as f32,
-                            Color32::from_rgba_premultiplied(127, 0, 127, 63),
-                            (1., Color32::from_rgb(255, 0, 255)),
-                        );
-                    }
-                    for (i, seg) in self.train.path_bundle.segments().enumerate() {
-                        if found_node.is_some_and(|(found, _)| found == i) {
-                            continue;
+                    if let Some((path_id, _, seg_id)) = found_node {
+                        let color = Color32::from_rgba_premultiplied(127, 0, 127, 63);
+                        if let Some(path) = self.train.paths.get(&path_id) {
+                            let seg_track = path.seg_track(seg_id);
+                            self.render_track_detail(
+                                seg_track,
+                                &painter,
+                                &paint_transform,
+                                5.,
+                                color,
+                            );
                         }
-                        let src_pos = paint_transform.to_pos2(seg.end());
-                        painter.circle_stroke(
-                            src_pos,
-                            SELECT_PIXEL_RADIUS as f32,
-                            (0.5, Color32::from_rgb(127, 0, 127)),
-                        );
                     }
                 }
             }
@@ -304,7 +295,7 @@ impl TrainApp {
                 let c_points_line = PathShape::line(c_points, (1., Color32::from_rgb(127, 0, 127)));
                 painter.add(c_points_line);
 
-                for seg in self.train.path_bundle.segments() {
+                for seg in self.train.paths.values().map(|b| b.segments()).flatten() {
                     if let PathSegment::Arc(arc) = seg {
                         painter.circle_stroke(
                             paint_transform.to_pos2(arc.center),
@@ -317,30 +308,32 @@ impl TrainApp {
 
             if 1. < self.transform.scale() {
                 if let Some(ghost_segments) = &self.train.ghost_path {
-                    self.render_track_detail(&ghost_segments.track, &painter, &paint_transform, 63);
+                    let color = Color32::from_rgba_premultiplied(255, 0, 255, 63);
+                    self.render_track_detail(
+                        &ghost_segments.track,
+                        &painter,
+                        &paint_transform,
+                        1.,
+                        color,
+                    );
                 }
-                self.render_track_detail(
-                    &self.train.path_bundle.track,
-                    &painter,
-                    &paint_transform,
-                    255,
-                );
+                let color = Color32::from_rgba_premultiplied(255, 0, 255, 255);
+                for bundle in self.train.paths.values() {
+                    self.render_track_detail(&bundle.track, &painter, &paint_transform, 1., color);
+                }
             } else {
                 if let Some(ghost_segments) = &self.train.ghost_path {
                     self.render_track(&ghost_segments.track, &painter, &paint_transform, 63);
                 }
-                self.render_track(
-                    &self.train.path_bundle.track,
-                    &painter,
-                    &paint_transform,
-                    255,
-                );
+                for bundle in self.train.paths.values() {
+                    self.render_track(&bundle.track, &painter, &paint_transform, 255);
+                }
             }
 
             const STATION_HEIGHT: f64 = 2.;
 
             let render_station = |station: &Station, is_target: bool| {
-                let Some(pos) = self.train.s_pos(station.s) else {
+                let Some(pos) = self.train.s_pos(station.path_id, station.s) else {
                     return;
                 };
                 painter.line_segment(
@@ -439,7 +432,8 @@ impl TrainApp {
         track: &[Vec2<f64>],
         painter: &Painter,
         paint_transform: &PaintTransform,
-        alpha: u8,
+        line_width: f32,
+        color: Color32,
     ) {
         let parallel_offset = |ofs| {
             let paint_transform = &paint_transform;
@@ -453,7 +447,6 @@ impl TrainApp {
         const TIE_HALFLENGTH: f64 = 1.5;
         const TIE_HALFWIDTH: f64 = 0.3;
         const TIE_INTERPOLATES: usize = 3;
-        let color = Color32::from_rgba_premultiplied(255, 0, 255, alpha);
 
         for ofs in [RAIL_HALFWIDTH, -RAIL_HALFWIDTH] {
             let left_rail_points = track
@@ -461,7 +454,7 @@ impl TrainApp {
                 .zip(track.iter().skip(1))
                 .map(parallel_offset(ofs))
                 .collect();
-            let left_rail = PathShape::line(left_rail_points, (1., color));
+            let left_rail = PathShape::line(left_rail_points, (line_width, color));
             painter.add(left_rail);
         }
 
@@ -482,7 +475,7 @@ impl TrainApp {
                             .into_iter()
                             .map(|v| paint_transform.to_pos2(v))
                             .collect(),
-                        (1., color),
+                        (line_width, color),
                     );
                     painter.add(tie);
                 }
