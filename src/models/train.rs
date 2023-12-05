@@ -69,7 +69,10 @@ pub(crate) enum TrainTask {
 
 pub(crate) struct Train {
     // pub control_points: Vec<Vec2<f64>>,
+    /// A collection of paths. It could be a vec of `Rc`s, but we want serializable data structure.
     pub paths: HashMap<usize, PathBundle>,
+    /// The next id of the path
+    pub path_id_gen: usize,
     /// Build ghost segment, which is not actually built yet
     pub ghost_path: Option<PathBundle>,
     /// The index of the path_bundle that the train is on
@@ -90,6 +93,7 @@ impl Train {
         Self {
             // control_points: C_POINTS.to_vec(),
             paths,
+            path_id_gen: 1,
             ghost_path: None,
             speed: 0.,
             s: 0.,
@@ -110,7 +114,7 @@ impl Train {
     }
 
     pub fn s_pos(&self, path_id: usize, s: f64) -> Option<Vec2<f64>> {
-        interpolate_path(&self.paths[&path_id].track, s)
+        interpolate_path(&self.paths.get(&path_id)?.track, s)
     }
 
     pub fn train_pos(&self, car_idx: usize) -> Option<Vec2<f64>> {
@@ -317,14 +321,15 @@ impl Train {
             let (node, seg) = path.find_node(pos, dist_thresh)?;
             Some(((id, path), seg, node))
         });
-        let mut path_to_delete = None;
         if let Some(((&path_id, path), seg, i)) = found_node {
-            if seg == path.find_seg_by_s(self.s as usize) {
+            if path_id == self.path_id && seg == path.find_seg_by_s(self.s as usize) {
                 return Err("You can't delete a segment while a train is on it".to_string());
             }
-            if let Some(new_path) = path.delete_node(i) {
-                let max_id = self.paths.keys().max().copied().unwrap_or(0);
-                self.paths.insert(max_id + 1, new_path);
+            let new_path = path.delete_segment(i);
+            let path_len = dbg!(path.segments.len());
+            if let Some(new_path) = new_path {
+                self.paths.insert(self.path_id_gen, new_path);
+                self.path_id_gen += 1;
 
                 let move_s = |path_id: &mut usize, s: &mut f64, name: &str| {
                     if i as f64 <= *s {
@@ -346,14 +351,13 @@ impl Train {
                         &format!("station {}", station.name),
                     );
                 }
-            } else if path.segments.len() == 0 {
-                path_to_delete = Some(path_id);
+            }
+            if path_len == 0 {
+                println!("Path {path_id} length is 0! deleting path");
+                self.paths.remove(&path_id);
             }
         } else {
             return Err("No segment is selected for deleting".to_string());
-        }
-        if let Some(path_id) = path_to_delete {
-            self.paths.remove(&path_id);
         }
         Ok(())
     }

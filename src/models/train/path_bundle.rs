@@ -83,7 +83,7 @@ impl PathBundle {
     }
 
     /// Returns a tuple of a new path created by splitting this one and the node length
-    pub(super) fn delete_node(&mut self, i: usize) -> Option<PathBundle> {
+    pub(super) fn delete_segment(&mut self, i: usize) -> Option<PathBundle> {
         let res = self.track_ranges.binary_search(&i);
         let idx = match res {
             Ok(res) => res,
@@ -153,6 +153,9 @@ pub(super) fn _compute_track(control_points: &[Vec2<f64>]) -> Vec<Vec2<f64>> {
 }
 
 pub(super) fn compute_track_ps(path_segments: &[PathSegment]) -> (Vec<Vec2<f64>>, Vec<usize>) {
+    if path_segments.is_empty() {
+        return (vec![], vec![]);
+    }
     let segment_lengths: Vec<_> = path_segments.iter().map(|seg| seg.length()).collect();
     let cumulative_lengths: Vec<f64> = segment_lengths.iter().fold(vec![], |mut acc, cur| {
         if let Some(v) = acc.last() {
@@ -162,7 +165,7 @@ pub(super) fn compute_track_ps(path_segments: &[PathSegment]) -> (Vec<Vec2<f64>>
         }
         acc
     });
-    let total_length = *cumulative_lengths.last().unwrap();
+    let total_length = *cumulative_lengths.last().unwrap_or(&0.);
     let num_nodes = (total_length / SEGMENT_LENGTH) as usize + 1;
     let mut last_idx = None;
     let mut track_ranges = vec![];
