@@ -292,16 +292,13 @@ impl Train {
                 continue;
             }
             let beta = (MIN_RADIUS / arc_dest_len).acos();
-            let ad_angle = arc_dest.y.atan2(arc_dest.x);
-            let angle = ad_angle - cur * beta;
+            let arc_dest_angle = arc_dest.y.atan2(arc_dest.x);
+            let angle = arc_dest_angle - cur * beta;
             let end_angle = start_angle
                 + wrap_angle_offset(angle - start_angle, (1. - cur) * std::f64::consts::PI);
-            if let Some(acc) = tangent_angle {
-                if (start_angle - acc.0).abs() < (start_angle - end_angle).abs() {
-                } else {
-                    tangent_angle = Some((end_angle, start_angle, arc_center));
-                }
-            } else {
+            if !tangent_angle
+                .is_some_and(|acc| (acc.1 - acc.0).abs() < (start_angle - end_angle).abs())
+            {
                 tangent_angle = Some((end_angle, start_angle, arc_center));
             }
         }
