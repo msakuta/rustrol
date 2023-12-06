@@ -317,20 +317,20 @@ impl Train {
         }
     }
 
-    /// Returns a tuple of (path id, global node id, segment id)
-    pub fn find_path_node(&self, pos: Vec2<f64>, thresh: f64) -> Option<(usize, usize, usize)> {
+    /// Returns a tuple of (path id, segment id)
+    pub fn find_path_node(&self, pos: Vec2<f64>, thresh: f64) -> Option<(usize, usize)> {
         self.paths.iter().find_map(|(path_id, path)| {
-            let (global_id, seg_id) = path.find_node(pos, thresh)?;
-            Some((*path_id, global_id, seg_id))
+            let seg_id = path.find_node(pos, thresh)?;
+            Some((*path_id, seg_id))
         })
     }
 
     pub fn delete_segment(&mut self, pos: Vec2<f64>, dist_thresh: f64) -> Result<(), String> {
         let found_node = self.paths.iter_mut().find_map(|(id, path)| {
-            let (node, seg) = path.find_node(pos, dist_thresh)?;
-            Some(((id, path), seg, node))
+            let seg = path.find_node(pos, dist_thresh)?;
+            Some((id, path, seg))
         });
-        if let Some(((&path_id, path), seg, node_i)) = found_node {
+        if let Some((&path_id, path, seg)) = found_node {
             if path_id == self.path_id && seg == path.find_seg_by_s(self.s as usize) {
                 return Err("You can't delete a segment while a train is on it".to_string());
             }

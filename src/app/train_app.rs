@@ -270,7 +270,7 @@ impl TrainApp {
                         self.train
                             .find_path_node(paint_transform.from_pos2(pointer), thresh)
                     });
-                    if let Some((path_id, _, seg_id)) = found_node {
+                    if let Some((path_id, seg_id)) = found_node {
                         let color = Color32::from_rgba_premultiplied(127, 0, 127, 63);
                         if let Some(path) = self.train.paths.get(&path_id) {
                             let seg_track = path.seg_track(seg_id);
