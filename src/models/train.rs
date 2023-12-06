@@ -216,7 +216,7 @@ impl Train {
         let angle = delta.y.atan2(delta.x);
         let phi = wrap_angle(angle - prev_angle);
         let radius = delta.length() / 2. / phi.sin();
-        if radius < MIN_RADIUS {
+        if radius.abs() < MIN_RADIUS {
             return Err("Clicked point requires tighter curvature radius than allowed".to_string());
         }
         let start = wrap_angle(prev_angle - radius.signum() * std::f64::consts::PI * 0.5);
