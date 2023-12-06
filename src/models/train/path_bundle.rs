@@ -5,6 +5,7 @@ use crate::{
 
 use super::SEGMENT_LENGTH;
 
+/// A path and its accompanying data.
 pub(crate) struct PathBundle {
     /// A segment is a continuous line or curve with the same curvature
     pub(super) segments: Vec<PathSegment>,
@@ -82,19 +83,19 @@ impl PathBundle {
         seg
     }
 
+    /// Deletes a segment, optionally splitting the path that contains the segment.
+    ///
     /// Returns a tuple of a new path created by splitting this one and the node length
-    pub(super) fn delete_segment(&mut self, i: usize) -> Option<PathBundle> {
-        let res = self.track_ranges.binary_search(&i);
-        let idx = match res {
-            Ok(res) => res,
-            Err(res) => res,
-        };
+    ///
+    /// Note that deleting a node by isolation doesn't make sense, because a node is a interpolated cached position
+    /// from a segment parameters.
+    pub(super) fn delete_segment(&mut self, seg: usize) -> Option<PathBundle> {
         let mut new_path = vec![];
-        if idx == 0 {
+        if seg == 0 {
             self.segments.remove(0);
         } else {
-            new_path = self.segments[idx + 1..].to_vec();
-            self.segments.truncate(idx);
+            new_path = self.segments[seg + 1..].to_vec();
+            self.segments.truncate(seg);
         }
         (self.track, self.track_ranges) = compute_track_ps(&self.segments);
         if !new_path.is_empty() {

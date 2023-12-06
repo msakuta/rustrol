@@ -51,10 +51,10 @@ pub(crate) struct Station {
 }
 
 impl Station {
-    pub fn new(name: impl Into<String>, s: f64) -> Self {
+    pub fn new(name: impl Into<String>, path_id: usize, s: f64) -> Self {
         Self {
             name: name.into(),
-            path_id: 0,
+            path_id,
             s,
         }
     }
@@ -98,7 +98,7 @@ impl Train {
             speed: 0.,
             s: 0.,
             path_id: 0,
-            stations: vec![Station::new("Start", 10.), Station::new("Goal", 70.)],
+            stations: vec![Station::new("Start", 0, 10.), Station::new("Goal", 0, 70.)],
             train_task: TrainTask::Idle,
             schedule: vec![],
         }
@@ -175,6 +175,15 @@ impl Train {
             self.speed = 0.;
         }
         self.s = (self.s + self.speed).clamp(0., self.paths[&self.path_id].track.len() as f64);
+    }
+
+    pub fn add_station(&mut self, name: impl Into<String>) {
+        let path_id = self.path_id;
+        self.stations.push(Station::new(
+            name,
+            path_id,
+            (self.paths[&path_id].track.len() as f64 - 10.).max(0.),
+        ));
     }
 
     pub fn add_gentle(&mut self, pos: Vec2<f64>) -> Result<(), String> {
@@ -321,25 +330,23 @@ impl Train {
             let (node, seg) = path.find_node(pos, dist_thresh)?;
             Some(((id, path), seg, node))
         });
-        if let Some(((&path_id, path), seg, i)) = found_node {
+        if let Some(((&path_id, path), seg, node_i)) = found_node {
             if path_id == self.path_id && seg == path.find_seg_by_s(self.s as usize) {
                 return Err("You can't delete a segment while a train is on it".to_string());
             }
-            let new_path = path.delete_segment(i);
+            let node_s = path.track_ranges[seg] as f64;
+            let new_path = path.delete_segment(seg);
             let path_len = dbg!(path.segments.len());
             if let Some(new_path) = new_path {
-                self.paths.insert(self.path_id_gen, new_path);
+                let new_id = self.path_id_gen;
+                self.paths.insert(new_id, new_path);
                 self.path_id_gen += 1;
 
                 let move_s = |path_id: &mut usize, s: &mut f64, name: &str| {
-                    if i as f64 <= *s {
-                        println!(
-                            "Moving {name} path: {}, {}",
-                            self.paths.len() - 1,
-                            (*s - i as f64).max(0.)
-                        );
-                        *path_id = self.paths.len() - 1;
-                        *s = (*s - i as f64).max(0.);
+                    if node_s <= *s {
+                        println!("Moving {name} path: {}, {}", new_id, (*s - node_s).max(0.));
+                        *path_id = new_id;
+                        *s = (*s - node_s).max(0.);
                     }
                 };
 

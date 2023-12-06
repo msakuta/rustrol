@@ -101,7 +101,11 @@ impl TrainApp {
         ui.group(|ui| {
             ui.label("Stations:");
             for (i, station) in self.train.stations.iter().enumerate() {
-                ui.radio_value(&mut self.selected_station, Some(i), &station.name);
+                ui.radio_value(
+                    &mut self.selected_station,
+                    Some(i),
+                    &format!("{} ({}, {})", station.name, station.path_id, station.s),
+                );
             }
             if ui.button("Schedule station").clicked() {
                 if let Some(target) = self.selected_station {
@@ -110,10 +114,8 @@ impl TrainApp {
             }
             ui.text_edit_singleline(&mut self.new_station);
             if ui.button("Add station").clicked() {
-                self.train.stations.push(Station::new(
-                    std::mem::take(&mut self.new_station),
-                    self.train.paths[&self.train.path_id].track.len() as f64 - 10.,
-                ))
+                self.train
+                    .add_station(std::mem::take(&mut self.new_station))
             }
         });
         ui.group(|ui| {
@@ -414,6 +416,14 @@ impl TrainApp {
                     paint_train(&train_pos, train_heading);
                 }
             }
+
+            painter.text(
+                response.rect.left_top(),
+                Align2::LEFT_TOP,
+                format!("pid: {}, s: {:.3}", self.train.path_id, self.train.s),
+                FontId::proportional(16.),
+                Color32::BLACK,
+            );
 
             if let Some((ref err, _)) = self.error_msg {
                 painter.text(
