@@ -53,8 +53,8 @@ impl PathBundle {
         &self.track[start..self.track_ranges[seg]]
     }
 
-    /// Returns segment id
-    pub fn find_node(&self, pos: Vec2<f64>, dist_thresh: f64) -> Option<usize> {
+    /// Returns (segment id, node id)
+    pub fn find_node(&self, pos: Vec2<f64>, dist_thresh: f64) -> Option<(usize, usize)> {
         let dist2_thresh = dist_thresh.powi(2);
         let closest_node: Option<(usize, f64)> =
             self.track.iter().enumerate().fold(None, |acc, cur| {
@@ -71,7 +71,7 @@ impl PathBundle {
                     None
                 }
             });
-        closest_node.map(|(i, _)| self.find_seg_by_s(i))
+        closest_node.map(|(i, _)| (self.find_seg_by_s(i), i))
     }
 
     pub fn find_seg_by_s(&self, i: usize) -> usize {

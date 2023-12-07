@@ -177,13 +177,12 @@ impl Train {
         self.s = (self.s + self.speed).clamp(0., self.paths[&self.path_id].track.len() as f64);
     }
 
-    pub fn add_station(&mut self, name: impl Into<String>) {
-        let path_id = self.path_id;
-        self.stations.push(Station::new(
-            name,
-            path_id,
-            (self.paths[&path_id].track.len() as f64 - 10.).max(0.),
-        ));
+    pub fn add_station(&mut self, name: impl Into<String>, pos: Vec2<f64>, thresh: f64) {
+        let Some((path_id, _seg_id, node_id)) = self.find_path_node(pos, thresh) else {
+            return;
+        };
+        self.stations
+            .push(Station::new(name, path_id, node_id as f64));
     }
 
     pub fn add_gentle(&mut self, pos: Vec2<f64>) -> Result<(), String> {
@@ -315,16 +314,16 @@ impl Train {
     }
 
     /// Returns a tuple of (path id, segment id)
-    pub fn find_path_node(&self, pos: Vec2<f64>, thresh: f64) -> Option<(usize, usize)> {
+    pub fn find_path_node(&self, pos: Vec2<f64>, thresh: f64) -> Option<(usize, usize, usize)> {
         self.paths.iter().find_map(|(path_id, path)| {
-            let seg_id = path.find_node(pos, thresh)?;
-            Some((*path_id, seg_id))
+            let (seg_id, node_id) = path.find_node(pos, thresh)?;
+            Some((*path_id, seg_id, node_id))
         })
     }
 
     pub fn delete_segment(&mut self, pos: Vec2<f64>, dist_thresh: f64) -> Result<(), String> {
         let found_node = self.paths.iter_mut().find_map(|(id, path)| {
-            let seg = path.find_node(pos, dist_thresh)?;
+            let (seg, _) = path.find_node(pos, dist_thresh)?;
             Some((id, path, seg))
         });
         if let Some((&path_id, path, seg)) = found_node {

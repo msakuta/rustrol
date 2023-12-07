@@ -20,7 +20,8 @@ enum ClickMode {
     GentleCurve,
     TightCurve,
     StraightLine,
-    Delete,
+    DeleteSegment,
+    AddStation,
 }
 
 pub struct TrainApp {
@@ -96,7 +97,8 @@ impl TrainApp {
                 ClickMode::StraightLine,
                 "Straight Line",
             );
-            ui.radio_value(&mut self.click_mode, ClickMode::Delete, "Delete");
+            ui.radio_value(&mut self.click_mode, ClickMode::DeleteSegment, "Delete");
+            ui.radio_value(&mut self.click_mode, ClickMode::AddStation, "Add Station");
         });
         ui.group(|ui| {
             ui.label("Stations:");
@@ -113,10 +115,10 @@ impl TrainApp {
                 }
             }
             ui.text_edit_singleline(&mut self.new_station);
-            if ui.button("Add station").clicked() {
-                self.train
-                    .add_station(std::mem::take(&mut self.new_station))
-            }
+            // if ui.button("Add station").clicked() {
+            //     self.train
+            //         .add_station(std::mem::take(&mut self.new_station))
+            // }
         });
         ui.group(|ui| {
             ui.label("Station schedule:");
@@ -177,11 +179,32 @@ impl TrainApp {
                             let res = self.train.add_straight(pos);
                             self.process_result(pos, res);
                         }
-                        ClickMode::Delete => {
+                        ClickMode::DeleteSegment => {
                             let pos = paint_transform.from_pos2(pointer);
                             let thresh = SELECT_PIXEL_RADIUS / self.transform.scale() as f64;
                             let res = self.train.delete_segment(pos, thresh);
                             self.process_result(pos, res);
+                        }
+                        ClickMode::AddStation => {
+                            let pos = paint_transform.from_pos2(pointer);
+                            let thresh = SELECT_PIXEL_RADIUS / self.transform.scale() as f64;
+                            let next_name = (0..).find_map(|i| {
+                                let cand = format!("New Station {i}");
+                                if !self.train.stations.iter().any(|s| s.name == cand)
+                                    && self.new_station != cand
+                                {
+                                    Some(cand)
+                                } else {
+                                    None
+                                }
+                            });
+                            if let Some(name) = next_name {
+                                self.train.add_station(
+                                    std::mem::replace(&mut self.new_station, name),
+                                    pos,
+                                    thresh,
+                                );
+                            }
                         }
                     }
                 }
@@ -264,13 +287,13 @@ impl TrainApp {
                         self.train.ghost_path = None;
                     }
                 }
-                ClickMode::Delete => {
+                ClickMode::DeleteSegment => {
                     let found_node = response.hover_pos().and_then(|pointer| {
                         let thresh = SELECT_PIXEL_RADIUS / self.transform.scale() as f64;
                         self.train
                             .find_path_node(paint_transform.from_pos2(pointer), thresh)
                     });
-                    if let Some((path_id, seg_id)) = found_node {
+                    if let Some((path_id, seg_id, _)) = found_node {
                         let color = Color32::from_rgba_premultiplied(127, 0, 127, 63);
                         if let Some(path) = self.train.paths.get(&path_id) {
                             let seg_track = path.seg_track(seg_id);
@@ -284,6 +307,7 @@ impl TrainApp {
                         }
                     }
                 }
+                ClickMode::AddStation => {}
             }
 
             if self.show_control_points {
