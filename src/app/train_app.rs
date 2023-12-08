@@ -307,7 +307,18 @@ impl TrainApp {
                         }
                     }
                 }
-                ClickMode::AddStation => {}
+                ClickMode::AddStation => {
+                    if let Some(pointer) = response.hover_pos() {
+                        let pos = paint_transform.from_pos2(pointer);
+                        let thresh = SELECT_PIXEL_RADIUS / self.transform.scale() as f64;
+                        if let Some((path_id, _, node_id)) = self.train.find_path_node(pos, thresh)
+                        {
+                            let station =
+                                Station::new(self.new_station.clone(), path_id, node_id as f64);
+                            self.render_station(&painter, &paint_transform, &station, false, true);
+                        }
+                    }
+                }
             }
 
             if self.show_control_points {
@@ -356,47 +367,14 @@ impl TrainApp {
                 }
             }
 
-            const STATION_HEIGHT: f64 = 2.;
-
-            let render_station = |station: &Station, is_target: bool| {
-                let Some(pos) = self.train.s_pos(station.path_id, station.s) else {
-                    return;
-                };
-                painter.line_segment(
-                    [
-                        paint_transform.to_pos2(pos),
-                        paint_transform.to_pos2(pos + Vec2::new(0., STATION_HEIGHT)),
-                    ],
-                    (3., Color32::from_rgb(0, 127, 63)),
-                );
-
-                painter.add(PathShape::convex_polygon(
-                    [[0., 0.], [1., -0.5], [0., -1.]]
-                        .into_iter()
-                        .map(|ofs| {
-                            paint_transform
-                                .to_pos2(pos + Vec2::new(ofs[0], STATION_HEIGHT + ofs[1]))
-                        })
-                        .collect(),
-                    Color32::from_rgb(63, 95, 0),
-                    (1., Color32::from_rgb(31, 63, 0)),
-                ));
-
-                painter.text(
-                    paint_transform.to_pos2(pos),
-                    Align2::CENTER_BOTTOM,
-                    &station.name,
-                    FontId::proportional(16.),
-                    if is_target {
-                        Color32::RED
-                    } else {
-                        Color32::BLACK
-                    },
-                );
-            };
-
             for (i, station) in self.train.stations.iter().enumerate() {
-                render_station(station, self.train.train_task == TrainTask::Goto(i));
+                self.render_station(
+                    &painter,
+                    &paint_transform,
+                    station,
+                    self.train.train_task == TrainTask::Goto(i),
+                    false,
+                );
             }
 
             let paint_train = |pos: &Vec2<f64>, heading: f64| {
@@ -459,6 +437,54 @@ impl TrainApp {
                 );
             }
         });
+    }
+
+    fn render_station(
+        &self,
+        painter: &Painter,
+        paint_transform: &PaintTransform,
+        station: &Station,
+        is_target: bool,
+        is_ghost: bool,
+    ) {
+        const STATION_HEIGHT: f64 = 5.;
+
+        let Some(pos) = self.train.s_pos(station.path_id, station.s) else {
+            return;
+        };
+        let alpha = if is_ghost { 63 } else { 255 };
+        painter.line_segment(
+            [
+                paint_transform.to_pos2(pos),
+                paint_transform.to_pos2(pos + Vec2::new(0., STATION_HEIGHT)),
+            ],
+            (3., Color32::from_rgba_premultiplied(0, 127, 63, alpha)),
+        );
+
+        painter.add(PathShape::convex_polygon(
+            [[0., 0.], [2., -1.], [0., -2.]]
+                .into_iter()
+                .map(|ofs| {
+                    paint_transform.to_pos2(pos + Vec2::new(ofs[0], STATION_HEIGHT + ofs[1]))
+                })
+                .collect(),
+            Color32::from_rgba_premultiplied(63, 95, 0, alpha),
+            (1., Color32::from_rgba_premultiplied(31, 63, 0, alpha)),
+        ));
+
+        painter.text(
+            paint_transform.to_pos2(pos),
+            Align2::CENTER_BOTTOM,
+            &station.name,
+            FontId::proportional(16.),
+            if is_target {
+                Color32::RED
+            } else if is_ghost {
+                Color32::from_rgba_premultiplied(0, 0, 255, 255)
+            } else {
+                Color32::BLACK
+            },
+        );
     }
 
     fn render_track_detail(
