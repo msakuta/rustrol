@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use eframe::{
     egui::{self, Context, Frame, Painter, Ui},
     emath::Align2,
@@ -102,7 +104,8 @@ impl TrainApp {
         });
         ui.group(|ui| {
             ui.label("Stations:");
-            for (i, station) in self.train.stations.iter().enumerate() {
+            for (i, rc_station) in self.train.stations.iter().enumerate() {
+                let station = rc_station.borrow();
                 ui.radio_value(
                     &mut self.selected_station,
                     Some(i),
@@ -111,7 +114,14 @@ impl TrainApp {
             }
             if ui.button("Schedule station").clicked() {
                 if let Some(target) = self.selected_station {
-                    self.train.schedule.push(target);
+                    self.train
+                        .schedule
+                        .push(Rc::downgrade(&self.train.stations[target]));
+                }
+            }
+            if ui.button("Delete station").clicked() {
+                if let Some(target) = self.selected_station {
+                    self.train.stations.remove(target);
                 }
             }
             ui.text_edit_singleline(&mut self.new_station);
@@ -123,8 +133,8 @@ impl TrainApp {
         ui.group(|ui| {
             ui.label("Station schedule:");
             for (_i, station) in self.train.schedule.iter().enumerate() {
-                if let Some(station) = self.train.stations.get(*station) {
-                    ui.label(&station.name);
+                if let Some(station) = station.upgrade() {
+                    ui.label(&station.borrow().name);
                 }
             }
             if ui.button("Remove station schedule").clicked() {
@@ -190,7 +200,7 @@ impl TrainApp {
                             let thresh = SELECT_PIXEL_RADIUS / self.transform.scale() as f64;
                             let next_name = (0..).find_map(|i| {
                                 let cand = format!("New Station {i}");
-                                if !self.train.stations.iter().any(|s| s.name == cand)
+                                if !self.train.stations.iter().any(|s| s.borrow().name == cand)
                                     && self.new_station != cand
                                 {
                                     Some(cand)
@@ -367,12 +377,24 @@ impl TrainApp {
                 }
             }
 
-            for (i, station) in self.train.stations.iter().enumerate() {
+            for (_i, station) in self.train.stations.iter().enumerate() {
+                let i_ptr = &*station.borrow() as *const _;
+                let is_target = if let TrainTask::Goto(target) = &self.train.train_task {
+                    if let Some(rc) = target.upgrade() {
+                        let target_ref = rc.borrow();
+                        let target_ptr = &*target_ref as *const _;
+                        i_ptr == target_ptr
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                };
                 self.render_station(
                     &painter,
                     &paint_transform,
-                    station,
-                    self.train.train_task == TrainTask::Goto(i),
+                    &station.borrow(),
+                    is_target,
                     false,
                 );
             }

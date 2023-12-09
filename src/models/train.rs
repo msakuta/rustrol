@@ -1,6 +1,10 @@
 mod path_bundle;
 
-use std::collections::HashMap;
+use std::{
+    cell::RefCell,
+    collections::HashMap,
+    rc::{Rc, Weak},
+};
 
 use crate::{
     path_utils::{
@@ -60,10 +64,10 @@ impl Station {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone)]
 pub(crate) enum TrainTask {
     Idle,
-    Goto(usize),
+    Goto(Weak<RefCell<Station>>),
     Wait(usize),
 }
 
@@ -81,9 +85,9 @@ pub(crate) struct Train {
     pub s: f64,
     /// Speed along s
     pub speed: f64,
-    pub stations: Vec<Station>,
+    pub stations: Vec<Rc<RefCell<Station>>>,
     pub train_task: TrainTask,
-    pub schedule: Vec<usize>,
+    pub schedule: Vec<Weak<RefCell<Station>>>,
 }
 
 impl Train {
@@ -98,7 +102,10 @@ impl Train {
             speed: 0.,
             s: 0.,
             path_id: 0,
-            stations: vec![Station::new("Start", 0, 10.), Station::new("Goal", 0, 70.)],
+            stations: [Station::new("Start", 0, 10.), Station::new("Goal", 0, 70.)]
+                .into_iter()
+                .map(|s| Rc::new(RefCell::new(s)))
+                .collect(),
             train_task: TrainTask::Idle,
             schedule: vec![],
         }
@@ -139,32 +146,41 @@ impl Train {
             }
         }
         if matches!(self.train_task, TrainTask::Idle) {
-            if let Some(first) = self.schedule.first().copied() {
-                self.train_task = TrainTask::Goto(first);
+            if let Some(first) = self.schedule.first().cloned() {
+                self.train_task = TrainTask::Goto(first.clone());
                 self.schedule.remove(0);
                 self.schedule.push(first);
             }
         }
-        if let TrainTask::Goto(target) = self.train_task {
-            let target_s = self.stations[target].s;
-            if (target_s - self.s).abs() < 1. && self.speed.abs() < TRAIN_ACCEL {
-                self.speed = 0.;
-                self.train_task = TrainTask::Wait(120);
-            } else if target_s < self.s {
-                // speed / accel == t
-                // speed * t / 2 == speed^2 / accel / 2 == dist
-                // accel = sqrt(2 * dist)
-                if self.speed < 0. && self.s - target_s < 0.5 * self.speed.powi(2) / TRAIN_ACCEL {
-                    self.speed += TRAIN_ACCEL;
+        if let TrainTask::Goto(target) = &self.train_task {
+            if let Some(target) = target.upgrade() {
+                let target = target.borrow();
+                let target_s = target.s;
+                if (target_s - self.s).abs() < 1. && self.speed.abs() < TRAIN_ACCEL {
+                    self.speed = 0.;
+                    self.train_task = TrainTask::Wait(120);
+                } else if target_s < self.s {
+                    // speed / accel == t
+                    // speed * t / 2 == speed^2 / accel / 2 == dist
+                    // accel = sqrt(2 * dist)
+                    if self.speed < 0. && self.s - target_s < 0.5 * self.speed.powi(2) / TRAIN_ACCEL
+                    {
+                        self.speed += TRAIN_ACCEL;
+                    } else {
+                        self.speed -= TRAIN_ACCEL;
+                    }
                 } else {
-                    self.speed -= TRAIN_ACCEL;
+                    if 0. < self.speed && target_s - self.s < 0.5 * self.speed.powi(2) / TRAIN_ACCEL
+                    {
+                        self.speed -= TRAIN_ACCEL;
+                    } else {
+                        self.speed += TRAIN_ACCEL;
+                    }
                 }
             } else {
-                if 0. < self.speed && target_s - self.s < 0.5 * self.speed.powi(2) / TRAIN_ACCEL {
-                    self.speed -= TRAIN_ACCEL;
-                } else {
-                    self.speed += TRAIN_ACCEL;
-                }
+                // The station that cease to exist should be rotated to the end of the queue.
+                self.schedule.pop();
+                self.train_task = TrainTask::Idle;
             }
         }
         self.speed = (self.speed + thrust * THRUST_ACCEL).clamp(-MAX_SPEED, MAX_SPEED);
@@ -181,8 +197,11 @@ impl Train {
         let Some((path_id, _seg_id, node_id)) = self.find_path_node(pos, thresh) else {
             return;
         };
-        self.stations
-            .push(Station::new(name, path_id, node_id as f64));
+        self.stations.push(Rc::new(RefCell::new(Station::new(
+            name,
+            path_id,
+            node_id as f64,
+        ))));
     }
 
     pub fn add_gentle(&mut self, pos: Vec2<f64>) -> Result<(), String> {
@@ -330,30 +349,53 @@ impl Train {
             if path_id == self.path_id && seg == path.find_seg_by_s(self.s as usize) {
                 return Err("You can't delete a segment while a train is on it".to_string());
             }
-            let node_s = path.track_ranges[seg] as f64;
+            let delete_begin = if 0 < seg {
+                path.track_ranges[seg - 1] as f64
+            } else {
+                0.
+            };
+            let delete_end = path.track_ranges[seg] as f64;
+            println!("Delete node range: {}, {}", delete_begin, delete_end);
             let new_path = path.delete_segment(seg);
-            let path_len = dbg!(path.segments.len());
+            let path_len = path.segments.len();
             if let Some(new_path) = new_path {
                 let new_id = self.path_id_gen;
                 self.paths.insert(new_id, new_path);
                 self.path_id_gen += 1;
 
                 let move_s = |path_id: &mut usize, s: &mut f64, name: &str| {
-                    if node_s <= *s {
-                        println!("Moving {name} path: {}, {}", new_id, (*s - node_s).max(0.));
+                    if delete_end <= *s {
+                        println!(
+                            "Moving {name} path: {}, {}",
+                            new_id,
+                            (*s - delete_end).max(0.)
+                        );
                         *path_id = new_id;
-                        *s = (*s - node_s).max(0.);
+                        *s = (*s - delete_end).max(0.);
+                        true
+                    } else {
+                        *s <= delete_begin
                     }
                 };
 
                 move_s(&mut self.path_id, &mut self.s, "train");
-                for station in &mut self.stations {
-                    move_s(
-                        &mut station.path_id,
-                        &mut station.s,
-                        &format!("station {}", station.name),
-                    );
-                }
+                self.stations.retain(|station| {
+                    let mut station = station.borrow_mut();
+                    let station = &mut *station;
+                    if station.path_id != path_id {
+                        return true;
+                    }
+                    let station_name = format!("station {}", station.name);
+                    move_s(&mut station.path_id, &mut station.s, &station_name)
+                });
+            } else {
+                self.stations.retain(|station| {
+                    let station = station.borrow();
+                    if station.path_id != path_id {
+                        return true;
+                    }
+                    station.s <= delete_begin || delete_end <= station.s
+                });
             }
             if path_len == 0 {
                 println!("Path {path_id} length is 0! deleting path");
