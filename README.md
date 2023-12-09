@@ -25,6 +25,7 @@ There are following models:
 * Orbital Mechanics
 * Three-body problem
 * Kinematic Bicycle Model
+* Train Tracks
 
 ### Lunar Lander
 
@@ -93,6 +94,15 @@ In the animation below:
 ![screencapture_bicycle](images/screencapture_bicycle.gif)
 
 
+### Train Tracks
+
+It is a simulation of a train on a rail track.
+It demonstrates the algorithm to connect straight lines and arcs to make a rail section and run the train on it.
+It doesn't actually use any autograd (yet).
+
+![train screenshot](images/screenshot-train.png)
+
+
 ## Control
 
 Clicking on the canvas will start the lander vehicle from clicked position.
@@ -122,3 +132,20 @@ and run
 trunk build --release
 ```
 
+
+## Train arc connector
+
+The train tracks are calculated with a series of line segments and arcs.
+It is a bit tricky to find the arc parameters to connect the line smoothly.
+It is probably cryptic to understand it in [the source code](src/models/train.rs).
+Compile and see [the LaTeX document](doc/circle.tex) for more detailed geometry.
+
+```
+$ pdflatex doc/circle.tex
+```
+
+
+## Where did this name come from?
+
+I asked ChatGPT to come up with a name of Rust project to demonstrate control problem algorithms.
+And it came up with this name.

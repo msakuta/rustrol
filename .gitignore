@@ -2,3 +2,6 @@
 /target
 *.dot
 *.code-workspace
+*.pdf
+*.aux
+*.log

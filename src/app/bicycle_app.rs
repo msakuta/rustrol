@@ -6,10 +6,10 @@ use eframe::{
 
 use crate::{
     models::bicycle::{
-        bicycle_simulate_step, control_bicycle, interpolate_path, simulate_bicycle, AvoidanceMode,
-        Bicycle, BicycleNavigation, BicycleParams, BicyclePath, BicycleResult, MAX_STEERING,
-        MAX_THRUST,
+        bicycle_simulate_step, control_bicycle, simulate_bicycle, AvoidanceMode, Bicycle,
+        BicycleNavigation, BicycleParams, BicyclePath, BicycleResult, MAX_STEERING, MAX_THRUST,
     },
+    path_utils::interpolate_path,
     transform::{half_rect, Transform},
     vec2::Vec2,
 };
