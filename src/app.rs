@@ -1,11 +1,13 @@
 mod bicycle_app;
 mod lander_app;
 mod missile_app;
+mod ndt_app;
 mod orbit_app;
 mod three_body_app;
 mod train_app;
 
 use eframe::egui::{self, Context, Ui};
+use ndt_app::NdtApp;
 
 use self::{
     bicycle_app::BicycleApp, lander_app::LanderApp, missile_app::MissileApp, orbit_app::OrbitalApp,
@@ -24,6 +26,7 @@ enum AppRadio {
     ThreeBody,
     Bicycle,
     Train,
+    Ndt,
 }
 
 pub enum AppSelect {
@@ -33,6 +36,7 @@ pub enum AppSelect {
     ThreeBody(ThreeBodyApp),
     Bicycle(BicycleApp),
     Train(TrainApp),
+    Ndt(NdtApp),
 }
 
 pub struct RustrolApp {
@@ -74,6 +78,9 @@ impl RustrolApp {
             changed |= ui
                 .radio_value(&mut self.app_radio, AppRadio::Train, "Train")
                 .changed();
+            changed |= ui
+                .radio_value(&mut self.app_radio, AppRadio::Ndt, "Ndt")
+                .changed();
         });
 
         if changed {
@@ -84,6 +91,7 @@ impl RustrolApp {
                 AppRadio::ThreeBody => self.app = AppSelect::ThreeBody(ThreeBodyApp::new()),
                 AppRadio::Bicycle => self.app = AppSelect::Bicycle(BicycleApp::new()),
                 AppRadio::Train => self.app = AppSelect::Train(TrainApp::new()),
+                AppRadio::Ndt => self.app = AppSelect::Ndt(NdtApp::new()),
             }
         }
 
@@ -94,6 +102,7 @@ impl RustrolApp {
             AppSelect::ThreeBody(ref mut app) => app.update_panel(ui),
             AppSelect::Bicycle(ref mut app) => app.update_panel(ui),
             AppSelect::Train(ref mut app) => app.update_panel(ui),
+            AppSelect::Ndt(ref mut app) => app.update_panel(ui),
         });
     }
 }
@@ -122,6 +131,7 @@ impl eframe::App for RustrolApp {
                 AppSelect::ThreeBody(ref mut app) => app.paint_graph(ui),
                 AppSelect::Bicycle(ref mut app) => app.paint_graph(ui),
                 AppSelect::Train(ref mut app) => app.paint_graph(ui),
+                AppSelect::Ndt(ref mut app) => app.paint_graph(ui),
             });
 
         match self.app {
@@ -131,6 +141,7 @@ impl eframe::App for RustrolApp {
             AppSelect::ThreeBody(ref mut app) => app.update(ctx),
             AppSelect::Bicycle(ref mut app) => app.update(ctx),
             AppSelect::Train(ref mut app) => app.update(ctx),
+            AppSelect::Ndt(ref mut app) => app.update(ctx),
         }
     }
 }

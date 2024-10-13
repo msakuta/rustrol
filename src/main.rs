@@ -5,6 +5,7 @@ mod models {
     pub mod bicycle;
     pub mod lander;
     pub mod missile;
+    pub mod ndt;
     pub mod orbital;
     pub mod train;
 }
