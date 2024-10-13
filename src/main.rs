@@ -13,22 +13,29 @@ mod ops;
 mod path_utils;
 mod transform;
 mod vec2;
+#[cfg(target_arch = "wasm32")]
+mod web;
 mod xor128;
 
 use crate::app::RustrolApp;
+use eframe::egui::{Style, Visuals};
 
 #[cfg(not(target_arch = "wasm32"))]
 fn main() {
-    let mut native_options = eframe::NativeOptions::default();
-
-    // We insist to use light theme, because the canvas color is designed to work with light background.
-    native_options.follow_system_theme = false;
-    native_options.default_theme = eframe::Theme::Light;
+    let native_options = eframe::NativeOptions::default();
 
     eframe::run_native(
         "rustrol GUI",
         native_options,
-        Box::new(|_cc| Box::new(RustrolApp::new())),
+        Box::new(|cc| {
+            // We insist to use light theme, because the canvas color is designed to work with light background.
+            let style = Style {
+                visuals: Visuals::light(),
+                ..Style::default()
+            };
+            cc.egui_ctx.set_style(style);
+            Ok(Box::new(RustrolApp::new()))
+        }),
     )
     .unwrap();
 }
@@ -42,20 +49,55 @@ fn main() {
     // Redirect tracing to console.log and friends:
     tracing_wasm::set_as_global_default();
 
-    let mut web_options = eframe::WebOptions::default();
+    use eframe::wasm_bindgen::JsCast as _;
+    use eframe::web_sys;
 
-    // We insist to use light theme, because the canvas color is designed to work with light background.
-    web_options.follow_system_theme = false;
-    web_options.default_theme = eframe::Theme::Light;
+    let web_options = eframe::WebOptions::default();
+
+    self::web::resize_canvas_to_screen_size("the_canvas_id", eframe::egui::Vec2::new(1980., 1024.));
 
     wasm_bindgen_futures::spawn_local(async {
-        eframe::start_web(
-            "the_canvas_id", // hardcode it
-            web_options,
-            Box::new(|cc| Box::new(RustrolApp::new())),
-        )
-        .await
-        .expect("failed to start eframe");
+        let document = web_sys::window()
+            .expect("No window")
+            .document()
+            .expect("No document");
+
+        let canvas = document
+            .get_element_by_id("the_canvas_id")
+            .expect("Failed to find the_canvas_id")
+            .dyn_into::<web_sys::HtmlCanvasElement>()
+            .expect("the_canvas_id was not a HtmlCanvasElement");
+
+        let start_result = eframe::WebRunner::new()
+            .start(
+                canvas,
+                web_options,
+                Box::new(|cc| {
+                    // We insist to use light theme, because the canvas color is designed to work with light background.
+                    let style = Style {
+                        visuals: Visuals::light(),
+                        ..Style::default()
+                    };
+                    cc.egui_ctx.set_style(style);
+                    Ok(Box::new(RustrolApp::new()))
+                }),
+            )
+            .await;
+
+        // Remove the loading text and spinner:
+        if let Some(loading_text) = document.get_element_by_id("loading_text") {
+            match start_result {
+                Ok(_) => {
+                    loading_text.remove();
+                }
+                Err(e) => {
+                    loading_text.set_inner_html(
+                        "<p> The app has crashed. See the developer console for details. </p>",
+                    );
+                    panic!("Failed to start eframe: {e:?}");
+                }
+            }
+        }
     });
 }
 

@@ -1,13 +1,9 @@
 use eframe::{
-    egui::{
-        self,
-        plot::{Legend, Line, PlotPoints},
-        widgets::plot::Plot,
-        Context, Frame, Ui,
-    },
+    egui::{self, Context, Frame, Ui},
     emath::Align2,
     epaint::{Color32, FontId, PathShape},
 };
+use egui_plot::{Legend, Line, Plot, PlotPoints};
 
 use crate::{
     models::orbital::{
