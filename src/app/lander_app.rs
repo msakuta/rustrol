@@ -186,7 +186,7 @@ impl LanderApp {
                 painter.arrow(
                     paint_transform.to_pos2(lander_state.pos),
                     paint_transform.to_vec2(lander_state.velo * 2.),
-                    (2., Color32::from_rgb(127, 0, 127)).into(),
+                    (2., Color32::from_rgb(127, 0, 127)),
                 );
             };
 

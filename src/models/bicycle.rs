@@ -1,6 +1,5 @@
 mod avoidance;
 mod navigation;
-mod path_utils;
 
 use std::{collections::VecDeque, error::Error};
 
@@ -9,14 +8,13 @@ use rustograd::{Tape, TapeTerm};
 use crate::{
     error::GradDoesNotExist,
     ops::{ClampOp, CosOp, SinOp, TanOp},
+    path_utils::{find_closest_node, interpolate_path},
     vec2::Vec2,
 };
 
-use self::path_utils::find_closest_node;
 pub(crate) use self::{
     avoidance::AvoidanceMode,
     navigation::{BicycleNavigation, BicyclePath, PathParams},
-    path_utils::interpolate_path,
 };
 
 pub(crate) const MAX_THRUST: f64 = 0.5;

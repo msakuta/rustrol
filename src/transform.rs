@@ -71,7 +71,7 @@ impl Transform {
 
     /// Handle mouse events, namely the wheel and dragging.
     pub(crate) fn handle_mouse(&mut self, i: &InputState, canvas_offset: [f32; 2]) {
-        let scroll_delta = i.scroll_delta[1];
+        let scroll_delta = i.raw_scroll_delta[1];
         let zoom_delta = if i.multi_touch().is_some() {
             i.zoom_delta()
         } else {
