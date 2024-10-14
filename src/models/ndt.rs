@@ -86,7 +86,7 @@ impl Model {
         for pt in &mut self.points {
             x.set(pt.pos.x)?;
             y.set(pt.pos.y)?;
-            let val = gauss.eval();
+            gauss.eval();
             gauss.backprop()?;
             let dmu_x = mu_x.grad().ok_or_else(|| "No grad")?;
             let dmu_y = mu_y.grad().ok_or_else(|| "No grad")?;
@@ -195,26 +195,17 @@ fn compute_eigenvectors([a, b, c, d]: [f64; 4], [lambda1, lambda2]: [f64; 2]) ->
     // (c, d - λ) * (x1, y1) = 0
     // Choose x1 = 1 (arbitrary choice) and solve for y1
 
-    let x1 = 1.0;
-    let y1 = if b != 0.0 {
-        -(a - lambda1) / b
-    } else if c != 0.0 {
-        -(d - lambda1) / c
-    } else {
-        0.0
+    let solve = |lambda: f64| {
+        let x1 = 1.0;
+        let y1 = if b != 0.0 {
+            -(a - lambda) / b
+        } else if d - lambda != 0.0 {
+            -c / (d - lambda)
+        } else {
+            0.0
+        };
+        Vec2::new(x1, y1)
     };
 
-    let x2 = 1.0;
-    let y2 = if b != 0.0 {
-        -(a - lambda2) / b
-    } else if c != 0.0 {
-        -(d - lambda2) / c
-    } else {
-        0.0
-    };
-
-    [
-        Vec2::new(x1, y1).normalized(),
-        Vec2::new(x2, y2).normalized(),
-    ]
+    [solve(lambda1).normalized(), solve(lambda2).normalized()]
 }
