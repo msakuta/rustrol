@@ -1,3 +1,5 @@
+use std::fmt::format;
+
 use eframe::{
     egui::{self, Context, Frame, Ui},
     epaint::{pos2, Color32, PathShape, Stroke},
@@ -52,6 +54,11 @@ impl NdtApp {
             &mut self.model.descent_rate,
             (0.01)..=(1.0),
         ));
+
+        ui.label(format!("mu: {:?}", self.model.gauss.mu));
+        ui.label(format!("sigma: {:?}", self.model.gauss.sigma));
+        ui.label(format!("eigen_val: {:?}", self.model.eigen_val));
+        ui.label(format!("eigen_vec: {:?}", self.model.eigen_vec));
     }
 
     pub fn paint_graph(&mut self, ui: &mut Ui) {
