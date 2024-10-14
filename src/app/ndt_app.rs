@@ -29,9 +29,8 @@ impl NdtApp {
 
     pub fn update_panel(&mut self, ui: &mut Ui) {
         if ui.button("Reset").clicked() {
-            match self.model.calc_grad() {
-                Ok(_) => {}
-                Err(e) => println!("Rustograd error: {e}"),
+            if let Err(e) = self.model.reset() {
+                println!("Rustograd error: {e}");
             }
         }
 
@@ -126,6 +125,14 @@ impl NdtApp {
                     rotation[2] * ofs[0] + rotation[3] * ofs[1],
                 ]
             };
+
+            self.model.plot_grid(|pos, val| {
+                painter.circle_filled(
+                    paint_transform.to_pos2(pos),
+                    val.sqrt() as f32 * 10.,
+                    Color32::from_rgb(127, 127, 0),
+                );
+            });
 
             for base_radius in [0.25f64, 0.5, 0.75, 1.] {
                 let radius = (1. + base_radius).exp();
