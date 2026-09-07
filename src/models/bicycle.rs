@@ -125,6 +125,9 @@ pub(crate) fn bicycle_simulate_step(
 
     let theta_dot = v_thrust * bicycle.steering.tan() / bicycle.wheel_base;
     bicycle.heading += theta_dot * playback_speed;
+    bicycle.trailer += v_thrust
+        * -(bicycle.steering.tan() / WHEEL_BASE + bicycle.trailer.sin() / TRAILER_DIST)
+        * playback_speed;
 }
 
 pub struct BicycleResultState {
