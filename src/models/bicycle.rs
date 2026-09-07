@@ -23,6 +23,10 @@ pub(crate) const MAX_THRUST: f64 = 0.5;
 pub(crate) const MAX_STEERING: f64 = std::f64::consts::PI / 4.;
 pub(crate) const STEERING_SPEED: f64 = std::f64::consts::PI * 0.01;
 const WHEEL_BASE: f64 = 4.;
+pub(crate) const TRAILER_HITCH_DIST: f64 = 0.;
+pub(crate) const TRAILER_HITCH_OFFSET_F32: [f32; 2] = [-TRAILER_HITCH_DIST as f32, 0.];
+pub(crate) const TRAILER_DIST: f64 = 6.;
+pub(crate) const TRAILER_OFFSET_F32: [f32; 2] = [-TRAILER_DIST as f32, 0.];
 const RATE: f64 = 1e-4;
 
 pub struct BicycleParams {
@@ -60,6 +64,7 @@ pub(crate) struct Bicycle {
     pub pos: Vec2<f64>,
     pub heading: f64,
     pub steering: f64,
+    pub trailer: f64,
     pub wheel_base: f64,
     pub pos_history: VecDeque<Vec2<f64>>,
     pub predictions: Vec<Vec2<f64>>,
@@ -72,6 +77,7 @@ impl Bicycle {
             pos: Vec2::zero(),
             heading: 0.,
             steering: 0.,
+            trailer: 0.,
             wheel_base: WHEEL_BASE,
             pos_history: VecDeque::new(),
             predictions: vec![],
@@ -119,12 +125,16 @@ pub(crate) fn bicycle_simulate_step(
 
     let theta_dot = v_thrust * bicycle.steering.tan() / bicycle.wheel_base;
     bicycle.heading += theta_dot * playback_speed;
+    bicycle.trailer += v_thrust
+        * -(bicycle.steering.tan() / WHEEL_BASE + bicycle.trailer.sin() / TRAILER_DIST)
+        * playback_speed;
 }
 
 pub struct BicycleResultState {
     pub pos: Vec2<f64>,
     pub heading: f64,
     pub steering: f64,
+    pub trailer: f64,
     pub predictions: Vec<Vec2<f64>>,
     pub closest_path_node: f64,
 }
@@ -162,11 +172,13 @@ pub(crate) fn simulate_bicycle(
                 optimize(&model, prev_path_node, params, path)?;
             prev_path_node = closest_path_node;
             // tape.dump_nodes();
-            let (pos, heading) = simulate_step(&model, t, h_thrust, v_thrust, 1., obstacles);
+            let (pos, heading, trailer) =
+                simulate_step(&model, t, h_thrust, v_thrust, 1., obstacles);
             let first = model.predictions.first().unwrap();
             Ok(BicycleResultState {
                 pos,
                 heading,
+                trailer,
                 steering: first.steering.eval_noclear(),
                 predictions: model
                     .predictions
@@ -197,15 +209,18 @@ pub(crate) fn control_bicycle(
 
     first.heading.set(bicycle.heading).unwrap();
     first.steering.set(bicycle.steering).unwrap();
+    first.trailer.set(bicycle.trailer).unwrap();
 
     let (h_thrust, v_thrust, closest_path_node) =
         optimize(&model, nav.prev_path_node, params, &nav.path)?;
-    let (_pos, heading) = simulate_step(&model, 0, h_thrust, v_thrust, playback_speed, obstacles);
+    let (_pos, heading, trailer) =
+        simulate_step(&model, 0, h_thrust, v_thrust, playback_speed, obstacles);
     tape.clear();
     let state = BicycleResultState {
         pos: first.pos.map(|v| v.eval_noclear()),
         heading,
         steering: first.steering.eval_noclear(),
+        trailer,
         predictions: model
             .predictions
             .iter()
@@ -267,6 +282,7 @@ fn optimize(
     Ok((h_thrust, v_thrust, closest_path_s))
 }
 
+/// Simulate a single physics step in real value.
 fn simulate_step(
     model: &Model,
     _t: usize,
@@ -274,14 +290,17 @@ fn simulate_step(
     v_thrust: f64,
     delta_time: f64,
     obstacles: &[Obstacle],
-) -> (Vec2<f64>, f64) {
+) -> (Vec2<f64>, f64, f64) {
     let bicycle = model.predictions.first().unwrap();
     let heading = bicycle.heading.data().unwrap();
 
     let steering = (bicycle.steering.data().unwrap() + h_thrust * delta_time)
         .clamp(-MAX_STEERING, MAX_STEERING);
     let theta_dot = v_thrust * steering.tan() / bicycle.wheel_base.data().unwrap();
+    let trailer = bicycle.trailer.eval_noclear();
     let next_heading = heading + theta_dot * delta_time;
+    let next_trailer = trailer
+        + v_thrust * -(steering.tan() / WHEEL_BASE + trailer.sin() / TRAILER_DIST) * delta_time;
     let direction = Vec2::new(heading.cos(), heading.sin());
     let oldpos = bicycle.pos.map(|x| x.data().unwrap());
     let newpos = oldpos + direction * v_thrust * delta_time;
@@ -295,7 +314,7 @@ fn simulate_step(
     bicycle.heading.set(next_heading).unwrap();
     bicycle.steering.set(steering).unwrap();
 
-    (oldpos, next_heading)
+    (oldpos, next_heading, next_trailer)
 }
 
 #[derive(Clone, Copy)]
@@ -308,7 +327,9 @@ struct BicycleTape<'a> {
     steering: TapeTerm<'a>,
     target_pos: Vec2<TapeTerm<'a>>,
     wheel_base: TapeTerm<'a>,
+    trailer_dist: TapeTerm<'a>,
     // accel: Vec2<TapeTerm<'a>>,
+    trailer: TapeTerm<'a>,
 }
 
 impl<'a> BicycleTape<'a> {
@@ -327,6 +348,7 @@ impl<'a> BicycleTape<'a> {
             heading: tape.term("heading", 0.),
             steering: tape.term("steering", 0.1),
             wheel_base: tape.term("wheel_base", WHEEL_BASE),
+            trailer_dist: tape.term("trailer_dist", TRAILER_DIST),
             target_pos: Vec2 {
                 x: tape.term("tx", 0.),
                 y: tape.term("ty", -0.01),
@@ -335,9 +357,11 @@ impl<'a> BicycleTape<'a> {
             //     x: tape.term("ax1", 0.),
             //     y: tape.term("ay1", 0.),
             // },
+            trailer: tape.term("trailer", 0.),
         }
     }
 
+    /// Simulate a single physics step in computation graph
     fn simulate_model(
         &mut self,
         tape: &'a Tape,
@@ -371,6 +395,11 @@ impl<'a> BicycleTape<'a> {
         let theta_dot = self.v_thrust * self.steering.apply_t(Box::new(TanOp)) / self.wheel_base;
         self.heading = self.heading + theta_dot;
 
+        self.trailer = self.trailer
+            + self.v_thrust
+                * -(self.steering.apply_t(Box::new(TanOp)) / self.wheel_base
+                    + self.trailer.apply_t(Box::new(SinOp)) / self.trailer_dist);
+
         // self.velo = self.velo + self.accel;
         self.h_thrust = tape.term(format!("h_thrust{}", hist.len()), 0.);
         self.v_thrust = tape.term(format!("v_thrust{}", hist.len()), MAX_THRUST);
@@ -396,6 +425,8 @@ fn get_model<'a>(
         .v_thrust
         .set(params.path_params.target_speed * 0.5)
         .unwrap();
+
+    bicycle.trailer.set(0.).unwrap();
 
     // let heading_weight = tape.term("heading_weight", HEADING_WEIGHT);
 
