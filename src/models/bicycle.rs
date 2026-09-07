@@ -279,6 +279,7 @@ fn optimize(
     Ok((h_thrust, v_thrust, closest_path_s))
 }
 
+/// Simulate a single physics step in real value.
 fn simulate_step(
     model: &Model,
     _t: usize,
@@ -323,6 +324,7 @@ struct BicycleTape<'a> {
     steering: TapeTerm<'a>,
     target_pos: Vec2<TapeTerm<'a>>,
     wheel_base: TapeTerm<'a>,
+    trailer_dist: TapeTerm<'a>,
     // accel: Vec2<TapeTerm<'a>>,
     trailer: TapeTerm<'a>,
 }
@@ -343,6 +345,7 @@ impl<'a> BicycleTape<'a> {
             heading: tape.term("heading", 0.),
             steering: tape.term("steering", 0.1),
             wheel_base: tape.term("wheel_base", WHEEL_BASE),
+            trailer_dist: tape.term("trailer_dist", TRAILER_DIST),
             target_pos: Vec2 {
                 x: tape.term("tx", 0.),
                 y: tape.term("ty", -0.01),
@@ -355,6 +358,7 @@ impl<'a> BicycleTape<'a> {
         }
     }
 
+    /// Simulate a single physics step in computation graph
     fn simulate_model(
         &mut self,
         tape: &'a Tape,
@@ -388,8 +392,10 @@ impl<'a> BicycleTape<'a> {
         let theta_dot = self.v_thrust * self.steering.apply_t(Box::new(TanOp)) / self.wheel_base;
         self.heading = self.heading + theta_dot;
 
-        self.trailer =
-            self.trailer /* * (-self.v_thrust).apply("exp", f64::exp, f64::exp) */+ theta_dot;
+        self.trailer = self.trailer
+            + self.v_thrust
+                * -(self.steering.apply_t(Box::new(TanOp)) / self.wheel_base
+                    + self.trailer.apply_t(Box::new(SinOp)) / self.trailer_dist);
 
         // self.velo = self.velo + self.accel;
         self.h_thrust = tape.term(format!("h_thrust{}", hist.len()), 0.);
