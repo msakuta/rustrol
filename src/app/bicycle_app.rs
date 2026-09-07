@@ -9,16 +9,13 @@ use crate::{
     models::bicycle::{
         bicycle_simulate_step, control_bicycle, interpolate_path, simulate_bicycle, AvoidanceMode,
         Bicycle, BicycleNavigation, BicycleParams, BicyclePath, BicycleResult, MAX_STEERING,
-        MAX_THRUST,
+        MAX_THRUST, TRAILER_HITCH_OFFSET_F32, TRAILER_OFFSET_F32,
     },
     transform::{half_rect, Transform},
     vec2::Vec2,
 };
 
 use super::SCALE;
-
-const TRAILER_DIST: f64 = 6.;
-const TRAILER_OFFSET_F32: [f32; 2] = [-TRAILER_DIST as f32, 0.];
 
 pub struct BicycleApp {
     realtime: bool,
@@ -415,10 +412,9 @@ impl BicycleApp {
                 let steering_t = flip_y(steering);
                 let trailer_rotation = rotation_matrix((heading + trailer) as f32);
                 let trailer_rotation_t = flip_y(trailer_rotation);
-                let trailer_pos = rotation * cgmath::Vector2::from(TRAILER_OFFSET_F32);
+                let trailer_pos = rotation * cgmath::Vector2::from(TRAILER_HITCH_OFFSET_F32);
                 let trailer_pos = trailer_pos
                     + cgmath::Vector2::<f32>::new(bicycle_pos.x as f32, bicycle_pos.y as f32);
-                let trailer_base_pos = cgmath::Vector2::new(trailer_pos[0], trailer_pos[1]);
 
                 let transform_delta = |ofs: &[f32; 2]| {
                     let vec = rotation_t * cgmath::Vector2::from(*ofs);
@@ -460,26 +456,36 @@ impl BicycleApp {
                 painter.add(convert_to_poly(&[[7., -1.], [8., 0.], [7., 1.]]));
 
                 painter.add(trailer_convert_to_poly(&[
-                    [-6., -2.],
+                    [-8., -2.],
                     [2., -2.],
                     [2., 2.],
-                    [-6., 2.],
+                    [-8., 2.],
                 ]));
                 painter.add(trailer_convert_to_poly(&[[7., -1.], [8., 0.], [7., 1.]]));
 
-                let paint_wheel = |ofs: &[f32; 2], rotation: &cgmath::Matrix2<f32>| {
-                    use eframe::emath::Vec2;
-                    let middle = transform_vec(ofs);
-                    let forward: [f32; 2] =
-                        (rotation * cgmath::Vector2::new(self.transform.scale(), 0.)).into();
-                    let front = middle + Vec2::from(forward);
-                    let back = middle - Vec2::from(forward);
+                let paint_wheel =
+                    |ofs: &[f32; 2],
+                     ofs_rot: &cgmath::Matrix2<f32>,
+                     rotation: &cgmath::Matrix2<f32>| {
+                        use eframe::emath::Vec2;
+                        let vec = ofs_rot * cgmath::Vector2::from(*ofs);
+                        let vec = scale_vec(self.transform.scale(), &vec.into());
+                        let middle = Pos2::from(vec) + base_pos;
+                        let forward: [f32; 2] =
+                            (rotation * cgmath::Vector2::new(self.transform.scale(), 0.)).into();
+                        let front = middle + Vec2::from(forward);
+                        let back = middle - Vec2::from(forward);
 
-                    painter.line_segment([front, back], (2., Color32::BLACK));
-                };
+                        painter.line_segment([front, back], (2., Color32::BLACK));
+                    };
 
-                paint_wheel(&[4., 0.], &steering_t);
-                paint_wheel(&[0., 0.], &rotation_t);
+                paint_wheel(&[4., 0.], &rotation_t, &steering_t);
+                paint_wheel(&[0., 0.], &rotation_t, &rotation_t);
+                paint_wheel(
+                    &TRAILER_OFFSET_F32,
+                    &trailer_rotation_t,
+                    &trailer_rotation_t,
+                );
 
                 painter.circle(
                     trailer_screen_pos.to_pos2(),

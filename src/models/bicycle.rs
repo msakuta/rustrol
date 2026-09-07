@@ -23,6 +23,10 @@ pub(crate) const MAX_THRUST: f64 = 0.5;
 pub(crate) const MAX_STEERING: f64 = std::f64::consts::PI / 4.;
 pub(crate) const STEERING_SPEED: f64 = std::f64::consts::PI * 0.01;
 const WHEEL_BASE: f64 = 4.;
+pub(crate) const TRAILER_HITCH_DIST: f64 = 0.;
+pub(crate) const TRAILER_HITCH_OFFSET_F32: [f32; 2] = [-TRAILER_HITCH_DIST as f32, 0.];
+pub(crate) const TRAILER_DIST: f64 = 6.;
+pub(crate) const TRAILER_OFFSET_F32: [f32; 2] = [-TRAILER_DIST as f32, 0.];
 const RATE: f64 = 1e-4;
 
 pub struct BicycleParams {
@@ -202,6 +206,7 @@ pub(crate) fn control_bicycle(
 
     first.heading.set(bicycle.heading).unwrap();
     first.steering.set(bicycle.steering).unwrap();
+    first.trailer.set(bicycle.trailer).unwrap();
 
     let (h_thrust, v_thrust, closest_path_node) =
         optimize(&model, nav.prev_path_node, params, &nav.path)?;
@@ -288,9 +293,10 @@ fn simulate_step(
     let steering = (bicycle.steering.data().unwrap() + h_thrust * delta_time)
         .clamp(-MAX_STEERING, MAX_STEERING);
     let theta_dot = v_thrust * steering.tan() / bicycle.wheel_base.data().unwrap();
+    let trailer = bicycle.trailer.eval_noclear();
     let next_heading = heading + theta_dot * delta_time;
-    let next_trailer =
-        /*bicycle.trailer.eval_noclear() * (-v_thrust * delta_time).exp() + */theta_dot * delta_time * -10.;
+    let next_trailer = trailer
+        + v_thrust * -(steering.tan() / WHEEL_BASE + trailer.sin() / TRAILER_DIST) * delta_time;
     let direction = Vec2::new(heading.cos(), heading.sin());
     let oldpos = bicycle.pos.map(|x| x.data().unwrap());
     let newpos = oldpos + direction * v_thrust * delta_time;
